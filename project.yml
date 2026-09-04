@@ -1,0 +1,78 @@
+name: ChannelDeck
+options:
+  bundleIdPrefix: com.kerimincedayi
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    ENABLE_USER_SCRIPT_SANDBOXING: true
+    CODE_SIGN_STYLE: Automatic
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    OTHER_LDFLAGS: "$(inherited) -lz"
+packages:
+  AcmeSwift:
+    url: https://github.com/m-barthelemy/AcmeSwift.git
+    exactVersion: 1.0.0
+  AsyncHTTPClient:
+    url: https://github.com/swift-server/async-http-client.git
+    from: 1.19.0
+  JWTKit:
+    url: https://github.com/vapor/jwt-kit.git
+    exactVersion: 4.13.5
+  SwiftCertificates:
+    url: https://github.com/apple/swift-certificates.git
+    from: 1.2.0
+  SwiftLog:
+    url: https://github.com/apple/swift-log.git
+    from: 1.0.0
+targets:
+  ChannelDeck:
+    type: application
+    platform: macOS
+    sources:
+      - path: ChannelDeck
+        excludes:
+          - Resources/Info.plist
+          - Resources/ChannelDeck.entitlements
+    resources:
+      - path: ChannelDeck/Resources/Assets.xcassets
+    info:
+      path: ChannelDeck/Resources/Info.plist
+      properties:
+        NSLocalNetworkUsageDescription: ChannelDeck securely relays live video from this Mac to AirPlay receivers on your local network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoadsForMedia: true
+          NSExceptionDomains:
+            vandijk.tvfor.pro:
+              NSExceptionAllowsInsecureHTTPLoads: true
+    entitlements:
+      path: ChannelDeck/Resources/ChannelDeck.entitlements
+    dependencies:
+      - package: AcmeSwift
+      - package: AsyncHTTPClient
+      - package: SwiftCertificates
+        product: X509
+      - package: SwiftLog
+        product: Logging
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeck
+        PRODUCT_NAME: ChannelDeck
+        GENERATE_INFOPLIST_FILE: false
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+  ChannelDeckTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: ChannelDeckTests
+    dependencies:
+      - target: ChannelDeck
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeckTests
+        GENERATE_INFOPLIST_FILE: true
+        CODE_SIGNING_ALLOWED: false

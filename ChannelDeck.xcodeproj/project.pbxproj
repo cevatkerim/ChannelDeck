@@ -1,0 +1,854 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0130765783266356F90D2052 /* PlayerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F49C80027A44952145DCCB24 /* PlayerController.swift */; };
+		064892D0E723DF086B3393DE /* NetworkGzipCompressorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 524A918F476DE61068C84B28 /* NetworkGzipCompressorTests.swift */; };
+		0753E01AF42E1B09623FD9B4 /* RelayPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BFE589E506EB4B165954003 /* RelayPreferencesTests.swift */; };
+		07A370766E633A15431C77DE /* ChannelDeckApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 013EB5282A7507885D2F8819 /* ChannelDeckApp.swift */; };
+		09837F52EBCEDA91E891ACDC /* FFmpegHLSAudioTranscoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6207941AF73A5656CA8D0E75 /* FFmpegHLSAudioTranscoder.swift */; };
+		0B323FBBFC0AFA6A428D2CBF /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7D00959364BA9E3C11A94F /* HTTPClient.swift */; };
+		0B49636CB68A0E51FEF91636 /* RelayLANAddressResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C6A8606B1B78303E487258 /* RelayLANAddressResolverTests.swift */; };
+		1A503F154E67C9594D5204DF /* LiveRelayProvisioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FEF7A5A8A19EC5CBA55AC4 /* LiveRelayProvisioningTests.swift */; };
+		1C422D0E7C8AA209FB334595 /* AirPlayRelayPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D9F3B15F6AA3FE602FBC2 /* AirPlayRelayPreferences.swift */; };
+		1FBE45019B08BE021AD0E2E3 /* RelayHLSPlaylistRewriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8BB70A87359A7542B2D87BA /* RelayHLSPlaylistRewriterTests.swift */; };
+		253D3A6C2D4E76921450F49C /* HLSPlaylistRewriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D9CFBE668406250E38311FB /* HLSPlaylistRewriter.swift */; };
+		2893AA7F79BC8055669115C2 /* ParserXMLTVParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */; };
+		2FB1A7A50BF41F78496C0E55 /* HLSRelayCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F18F9B280CB4CB404137412E /* HLSRelayCore.swift */; };
+		357ACC284FE6A15639BC34C0 /* PlaybackControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA6C40FD24DD492AB750CE50 /* PlaybackControllerTests.swift */; };
+		363D1139B28E0E4FB7FCCA39 /* HLSRelayResponseDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D96CC1FB2EB6F9CF33296B9 /* HLSRelayResponseDiagnostics.swift */; };
+		48293E2CF51212367A7AE929 /* DNS01.swift in Sources */ = {isa = PBXBuildFile; fileRef = BED479AB6DF4DBCDFAF254B9 /* DNS01.swift */; };
+		4898D1C1791BD09DC1BEC345 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2282548A51A61478E67974 /* SettingsView.swift */; };
+		4E12CF9CF1DD74C47CC51914 /* GzipDecompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = B289DEFC02F58B7CB36F12E8 /* GzipDecompressor.swift */; };
+		529F7C2FF2707C7F9B6E7904 /* ACMEKeychainMaterialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A16BD461DCFD4D060BEBA81 /* ACMEKeychainMaterialStore.swift */; };
+		5702E6816E15532FE08EB97B /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05612ABECE7CFED18D778DFF /* AppModel.swift */; };
+		59E949BB48CEF43155399C28 /* AirPlayRoutePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A7970A634FE5CCAA3F172AA /* AirPlayRoutePicker.swift */; };
+		5D091E43DB07BC626D1C7FC1 /* XMLTVParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E96A136F87B7334612D4C50 /* XMLTVParser.swift */; };
+		60FB02E643596DA6D1D93450 /* RelayResponseDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD59F0D49A9B382AB203CBB1 /* RelayResponseDiagnosticsTests.swift */; };
+		616C409B1D5CF695A392A2D9 /* RelayHLSCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95F62ADD78C4C79F37B1568C /* RelayHLSCoreTests.swift */; };
+		61854410EB02CF020B3736E7 /* NetworkHLSRelayUpstreamFetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB9A5F630B9CB623CD621D7B /* NetworkHLSRelayUpstreamFetcherTests.swift */; };
+		639EA40AC54DD025476E2B79 /* HLSRelayTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7102F3130C3A7A379503887 /* HLSRelayTypes.swift */; };
+		71601B1A7C62E923FD5511F0 /* HLSRelayServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51AC03890CE96EB0BD473B32 /* HLSRelayServer.swift */; };
+		72E91A9066F06330EE2907D0 /* RelayFFmpegHLSAudioTranscoderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F2E482BB00B219FFFC1FA8F /* RelayFFmpegHLSAudioTranscoderTests.swift */; };
+		76BE4855D8ECE0A85CDB309F /* M3UParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = D22AF6B8B767BF81F5926DA0 /* M3UParser.swift */; };
+		7AAF20C1245459B7E24518F1 /* DNSPropagationChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C6CBF893B7F83B3763F8D53 /* DNSPropagationChecker.swift */; };
+		80DD22B0C73BC37EA3B96DDB /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAE12839EF568EB10080FCA /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift */; };
+		80DDBCEC780EE7AF795D1629 /* SourceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D981749A51E11BF9372334CB /* SourceEditorView.swift */; };
+		80E50792B4111C204C90A39A /* ParserM3UParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26960B6BBA424F04C03BB05E /* ParserM3UParserTests.swift */; };
+		865D5BA5A5372104181CEE09 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = DE68B2D7BAEEA342EFD2BFA3 /* Logging */; };
+		877FCFC2DE38727FA03DCEF8 /* AsyncHTTPClient in Frameworks */ = {isa = PBXBuildFile; productRef = ECE7DAF6D4D0C4B5AF1F17DF /* AsyncHTTPClient */; };
+		89D041E3EA53225A002FD186 /* NetworkHTTPClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE2DC375FAC1F40F83C551 /* NetworkHTTPClientTests.swift */; };
+		8E283DC7BB0273DC787F19CE /* ACMECertificateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B01A6A0E593B6A20F1E945AA /* ACMECertificateManager.swift */; };
+		9111F2E3657EB77E93C2D38B /* SecurityKeychainAbstractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A57CED1F1A1E57EB85D9F5D /* SecurityKeychainAbstractionTests.swift */; };
+		92C88E7EC03A213D77D1BB7C /* AcmeSwiftClientAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91396883DD6E51E842A168C3 /* AcmeSwiftClientAdapter.swift */; };
+		9665F56B3B3B15B0A58571EB /* CloudflareDNSClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC82E4438F2044DFF824E05B /* CloudflareDNSClient.swift */; };
+		9B19CBB4FBF424B4F2685D86 /* GzipCompressor.swift in Sources */ = {isa = PBXBuildFile; fileRef = C654B0EFF227C7A2D31BE96F /* GzipCompressor.swift */; };
+		9B4935DDA7F1B2C30A8F9755 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295034392F963C6820187799 /* DesignSystem.swift */; };
+		9FD6388C853DF93C03D3963F /* NetworkDNSPropagationCheckerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AA75E02B91CFCC6FC2AB1FF /* NetworkDNSPropagationCheckerTests.swift */; };
+		A9CC7C25A63E5AF6A82DE6FC /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D62F10A740D269C32C0070 /* SidebarView.swift */; };
+		AE11F7984D281525BAD34E21 /* AcmeSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 62D7DADD1E08A868DD4D0394 /* AcmeSwift */; };
+		B6F8EB69C5D712BBF7F472AF /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 326A488F53FB20FE43F551D7 /* X509 */; };
+		BD1DC69934DF4866DDD27D41 /* ACMEModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE790D3A65087536D8788C1D /* ACMEModels.swift */; };
+		BF0C1FD82115C3FC573D03D0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5DBC4C4ECF5A5D9870B6F85C /* Assets.xcassets */; };
+		C0F34BCD8C3AC17D297C8888 /* ACMEProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34FB43226895A545D95DA33 /* ACMEProtocols.swift */; };
+		C19C0B10CD7D50D6FA79B062 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF00699FCD0549D463896696 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift */; };
+		C47D8B5DFDCA34721D0FCD33 /* URLSessionHLSRelayUpstreamFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E9047CA484CAE6011CA1CE /* URLSessionHLSRelayUpstreamFetcher.swift */; };
+		C5C7275919183E4B3355084D /* EncryptedPlaylistCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650AF232FC124B13D8DF75C0 /* EncryptedPlaylistCache.swift */; };
+		C727AD201A6C04C9F8416DE0 /* LANAddressResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21DCCB204374167CE4C2298F /* LANAddressResolver.swift */; };
+		C9BA68464B77BDB740AE60FB /* RelayHLSAcceptEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1069D4763D27898343A3981B /* RelayHLSAcceptEncodingTests.swift */; };
+		CF720C5F6746C31A76889BE5 /* ChannelLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C915009D8900E3EF1C049CE4 /* ChannelLogoView.swift */; };
+		D31C0608D47C87E5E8839EB9 /* NetworkCloudflareDNSClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7756535DB4F6DC7FAA1950AE /* NetworkCloudflareDNSClientTests.swift */; };
+		D3860487DA18B27BB0F259F2 /* SecurityEncryptedPlaylistCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5DA6941F17A216809E5AFEB /* SecurityEncryptedPlaylistCacheTests.swift */; };
+		D63978E9DEE4F9AC6E88ECD8 /* ChannelBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E69284C1C499916C2FAACC5 /* ChannelBrowserView.swift */; };
+		D70B9AD436611E6F3E28765F /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0458D9F47689E88FA508EF7F /* KeychainStore.swift */; };
+		E045AD7D2F91709A888B53F7 /* NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BF70B5926B1198FDA473C96 /* NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift */; };
+		E4D98BB34D7717555BD17DBF /* PlayerDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02D150A65494AEB03330C20D /* PlayerDetailView.swift */; };
+		E5D4ED1CCA7D500B324309F7 /* AsyncHTTPClientMPEGTSStreamSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32EAA7BF792EC7CCBC563501 /* AsyncHTTPClientMPEGTSStreamSource.swift */; };
+		E6357FC8B7A3761CC0DF6015 /* DomainModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B008A276727FD82C147F85C /* DomainModels.swift */; };
+		EE4243F8BAC29BF1008C1B4A /* ACMECertificateManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C125DC241506C420C086042A /* ACMECertificateManagerTests.swift */; };
+		EE628580D213D439912CEB2A /* NetworkGzipDecompressorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E0F5B27155DEA282D4A1C76 /* NetworkGzipDecompressorTests.swift */; };
+		F362DCA24D1C5B2E3CD72640 /* PlayerViewRepresentable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D98F5D8A0E12821F0E0035 /* PlayerViewRepresentable.swift */; };
+		F569FFEC7DC08C5CC356DD3E /* AirPlayRelayController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2709CC91EC6273A7F8914411 /* AirPlayRelayController.swift */; };
+		F61B1151B3DD887D003059E0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC9F662E4E644905B8BB20EF /* ContentView.swift */; };
+		F976BEF6C94DE2231CA0C876 /* PersistenceModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92208841B175E0A3CFB1C8A6 /* PersistenceModels.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FBA133DAB4DF239EFE51650A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7914B785A74F2614C72E6453 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 3D5C0C1373CADCB8B2438416;
+			remoteInfo = ChannelDeck;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		013EB5282A7507885D2F8819 /* ChannelDeckApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelDeckApp.swift; sourceTree = "<group>"; };
+		02D150A65494AEB03330C20D /* PlayerDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerDetailView.swift; sourceTree = "<group>"; };
+		0458D9F47689E88FA508EF7F /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		05612ABECE7CFED18D778DFF /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
+		09D98F5D8A0E12821F0E0035 /* PlayerViewRepresentable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerViewRepresentable.swift; sourceTree = "<group>"; };
+		0AA75E02B91CFCC6FC2AB1FF /* NetworkDNSPropagationCheckerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkDNSPropagationCheckerTests.swift; sourceTree = "<group>"; };
+		0ADE2DC375FAC1F40F83C551 /* NetworkHTTPClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkHTTPClientTests.swift; sourceTree = "<group>"; };
+		0F2E482BB00B219FFFC1FA8F /* RelayFFmpegHLSAudioTranscoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayFFmpegHLSAudioTranscoderTests.swift; sourceTree = "<group>"; };
+		1069D4763D27898343A3981B /* RelayHLSAcceptEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayHLSAcceptEncodingTests.swift; sourceTree = "<group>"; };
+		16FEF7A5A8A19EC5CBA55AC4 /* LiveRelayProvisioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRelayProvisioningTests.swift; sourceTree = "<group>"; };
+		1A16BD461DCFD4D060BEBA81 /* ACMEKeychainMaterialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEKeychainMaterialStore.swift; sourceTree = "<group>"; };
+		1B008A276727FD82C147F85C /* DomainModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainModels.swift; sourceTree = "<group>"; };
+		1B2282548A51A61478E67974 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		1BF70B5926B1198FDA473C96 /* NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift; sourceTree = "<group>"; };
+		1D96CC1FB2EB6F9CF33296B9 /* HLSRelayResponseDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSRelayResponseDiagnostics.swift; sourceTree = "<group>"; };
+		20E9047CA484CAE6011CA1CE /* URLSessionHLSRelayUpstreamFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLSessionHLSRelayUpstreamFetcher.swift; sourceTree = "<group>"; };
+		21DCCB204374167CE4C2298F /* LANAddressResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LANAddressResolver.swift; sourceTree = "<group>"; };
+		26960B6BBA424F04C03BB05E /* ParserM3UParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserM3UParserTests.swift; sourceTree = "<group>"; };
+		2709CC91EC6273A7F8914411 /* AirPlayRelayController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayRelayController.swift; sourceTree = "<group>"; };
+		295034392F963C6820187799 /* DesignSystem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystem.swift; sourceTree = "<group>"; };
+		2A7D00959364BA9E3C11A94F /* HTTPClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPClient.swift; sourceTree = "<group>"; };
+		2E96A136F87B7334612D4C50 /* XMLTVParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMLTVParser.swift; sourceTree = "<group>"; };
+		2EAE12839EF568EB10080FCA /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift; sourceTree = "<group>"; };
+		32EAA7BF792EC7CCBC563501 /* AsyncHTTPClientMPEGTSStreamSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncHTTPClientMPEGTSStreamSource.swift; sourceTree = "<group>"; };
+		3C6CBF893B7F83B3763F8D53 /* DNSPropagationChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSPropagationChecker.swift; sourceTree = "<group>"; };
+		51AC03890CE96EB0BD473B32 /* HLSRelayServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSRelayServer.swift; sourceTree = "<group>"; };
+		524A918F476DE61068C84B28 /* NetworkGzipCompressorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkGzipCompressorTests.swift; sourceTree = "<group>"; };
+		53C6A8606B1B78303E487258 /* RelayLANAddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayLANAddressResolverTests.swift; sourceTree = "<group>"; };
+		5A57CED1F1A1E57EB85D9F5D /* SecurityKeychainAbstractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityKeychainAbstractionTests.swift; sourceTree = "<group>"; };
+		5BFE589E506EB4B165954003 /* RelayPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayPreferencesTests.swift; sourceTree = "<group>"; };
+		5DBC4C4ECF5A5D9870B6F85C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserXMLTVParserTests.swift; sourceTree = "<group>"; };
+		6207941AF73A5656CA8D0E75 /* FFmpegHLSAudioTranscoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFmpegHLSAudioTranscoder.swift; sourceTree = "<group>"; };
+		650AF232FC124B13D8DF75C0 /* EncryptedPlaylistCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedPlaylistCache.swift; sourceTree = "<group>"; };
+		7756535DB4F6DC7FAA1950AE /* NetworkCloudflareDNSClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkCloudflareDNSClientTests.swift; sourceTree = "<group>"; };
+		7E0F5B27155DEA282D4A1C76 /* NetworkGzipDecompressorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkGzipDecompressorTests.swift; sourceTree = "<group>"; };
+		82269EF574467C56F9DEEFA3 /* ChannelDeckTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChannelDeckTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		884A61116846BC5DF5EA7D77 /* ChannelDeck.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChannelDeck.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8D9CFBE668406250E38311FB /* HLSPlaylistRewriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSPlaylistRewriter.swift; sourceTree = "<group>"; };
+		8E69284C1C499916C2FAACC5 /* ChannelBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelBrowserView.swift; sourceTree = "<group>"; };
+		91396883DD6E51E842A168C3 /* AcmeSwiftClientAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcmeSwiftClientAdapter.swift; sourceTree = "<group>"; };
+		92208841B175E0A3CFB1C8A6 /* PersistenceModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceModels.swift; sourceTree = "<group>"; };
+		95F62ADD78C4C79F37B1568C /* RelayHLSCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayHLSCoreTests.swift; sourceTree = "<group>"; };
+		9A7970A634FE5CCAA3F172AA /* AirPlayRoutePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayRoutePicker.swift; sourceTree = "<group>"; };
+		A7102F3130C3A7A379503887 /* HLSRelayTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSRelayTypes.swift; sourceTree = "<group>"; };
+		AD59F0D49A9B382AB203CBB1 /* RelayResponseDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayResponseDiagnosticsTests.swift; sourceTree = "<group>"; };
+		AE790D3A65087536D8788C1D /* ACMEModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEModels.swift; sourceTree = "<group>"; };
+		B01A6A0E593B6A20F1E945AA /* ACMECertificateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMECertificateManager.swift; sourceTree = "<group>"; };
+		B289DEFC02F58B7CB36F12E8 /* GzipDecompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GzipDecompressor.swift; sourceTree = "<group>"; };
+		B8BB70A87359A7542B2D87BA /* RelayHLSPlaylistRewriterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayHLSPlaylistRewriterTests.swift; sourceTree = "<group>"; };
+		BB9A5F630B9CB623CD621D7B /* NetworkHLSRelayUpstreamFetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkHLSRelayUpstreamFetcherTests.swift; sourceTree = "<group>"; };
+		BC82E4438F2044DFF824E05B /* CloudflareDNSClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudflareDNSClient.swift; sourceTree = "<group>"; };
+		BED479AB6DF4DBCDFAF254B9 /* DNS01.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNS01.swift; sourceTree = "<group>"; };
+		C125DC241506C420C086042A /* ACMECertificateManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMECertificateManagerTests.swift; sourceTree = "<group>"; };
+		C654B0EFF227C7A2D31BE96F /* GzipCompressor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GzipCompressor.swift; sourceTree = "<group>"; };
+		C915009D8900E3EF1C049CE4 /* ChannelLogoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelLogoView.swift; sourceTree = "<group>"; };
+		CA6C40FD24DD492AB750CE50 /* PlaybackControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControllerTests.swift; sourceTree = "<group>"; };
+		CA9D9F3B15F6AA3FE602FBC2 /* AirPlayRelayPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayRelayPreferences.swift; sourceTree = "<group>"; };
+		D22AF6B8B767BF81F5926DA0 /* M3UParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = M3UParser.swift; sourceTree = "<group>"; };
+		D981749A51E11BF9372334CB /* SourceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceEditorView.swift; sourceTree = "<group>"; };
+		DC9F662E4E644905B8BB20EF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		E34FB43226895A545D95DA33 /* ACMEProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEProtocols.swift; sourceTree = "<group>"; };
+		E3D62F10A740D269C32C0070 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
+		EF00699FCD0549D463896696 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncHTTPClientHLSRelayUpstreamFetcher.swift; sourceTree = "<group>"; };
+		F18F9B280CB4CB404137412E /* HLSRelayCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSRelayCore.swift; sourceTree = "<group>"; };
+		F49C80027A44952145DCCB24 /* PlayerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerController.swift; sourceTree = "<group>"; };
+		F5DA6941F17A216809E5AFEB /* SecurityEncryptedPlaylistCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityEncryptedPlaylistCacheTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6E7A578BB9E7299EFABCD288 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AE11F7984D281525BAD34E21 /* AcmeSwift in Frameworks */,
+				877FCFC2DE38727FA03DCEF8 /* AsyncHTTPClient in Frameworks */,
+				B6F8EB69C5D712BBF7F472AF /* X509 in Frameworks */,
+				865D5BA5A5372104181CEE09 /* Logging in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0E0C0FDA2C62F96BE818AEAF /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				BC82E4438F2044DFF824E05B /* CloudflareDNSClient.swift */,
+				C654B0EFF227C7A2D31BE96F /* GzipCompressor.swift */,
+				B289DEFC02F58B7CB36F12E8 /* GzipDecompressor.swift */,
+				2A7D00959364BA9E3C11A94F /* HTTPClient.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		2178FA8B59D3AE09DAB7B42F /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				5DBC4C4ECF5A5D9870B6F85C /* Assets.xcassets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		2406E707B4B444F9DA0F7160 /* ChannelDeckTests */ = {
+			isa = PBXGroup;
+			children = (
+				C125DC241506C420C086042A /* ACMECertificateManagerTests.swift */,
+				16FEF7A5A8A19EC5CBA55AC4 /* LiveRelayProvisioningTests.swift */,
+				2EAE12839EF568EB10080FCA /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift */,
+				1BF70B5926B1198FDA473C96 /* NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift */,
+				7756535DB4F6DC7FAA1950AE /* NetworkCloudflareDNSClientTests.swift */,
+				0AA75E02B91CFCC6FC2AB1FF /* NetworkDNSPropagationCheckerTests.swift */,
+				524A918F476DE61068C84B28 /* NetworkGzipCompressorTests.swift */,
+				7E0F5B27155DEA282D4A1C76 /* NetworkGzipDecompressorTests.swift */,
+				BB9A5F630B9CB623CD621D7B /* NetworkHLSRelayUpstreamFetcherTests.swift */,
+				0ADE2DC375FAC1F40F83C551 /* NetworkHTTPClientTests.swift */,
+				26960B6BBA424F04C03BB05E /* ParserM3UParserTests.swift */,
+				5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */,
+				CA6C40FD24DD492AB750CE50 /* PlaybackControllerTests.swift */,
+				0F2E482BB00B219FFFC1FA8F /* RelayFFmpegHLSAudioTranscoderTests.swift */,
+				1069D4763D27898343A3981B /* RelayHLSAcceptEncodingTests.swift */,
+				95F62ADD78C4C79F37B1568C /* RelayHLSCoreTests.swift */,
+				B8BB70A87359A7542B2D87BA /* RelayHLSPlaylistRewriterTests.swift */,
+				53C6A8606B1B78303E487258 /* RelayLANAddressResolverTests.swift */,
+				5BFE589E506EB4B165954003 /* RelayPreferencesTests.swift */,
+				AD59F0D49A9B382AB203CBB1 /* RelayResponseDiagnosticsTests.swift */,
+				F5DA6941F17A216809E5AFEB /* SecurityEncryptedPlaylistCacheTests.swift */,
+				5A57CED1F1A1E57EB85D9F5D /* SecurityKeychainAbstractionTests.swift */,
+			);
+			path = ChannelDeckTests;
+			sourceTree = "<group>";
+		};
+		5BAD5721D2D401497CE23C6E /* ACME */ = {
+			isa = PBXGroup;
+			children = (
+				B01A6A0E593B6A20F1E945AA /* ACMECertificateManager.swift */,
+				1A16BD461DCFD4D060BEBA81 /* ACMEKeychainMaterialStore.swift */,
+				AE790D3A65087536D8788C1D /* ACMEModels.swift */,
+				E34FB43226895A545D95DA33 /* ACMEProtocols.swift */,
+				91396883DD6E51E842A168C3 /* AcmeSwiftClientAdapter.swift */,
+				BED479AB6DF4DBCDFAF254B9 /* DNS01.swift */,
+				3C6CBF893B7F83B3763F8D53 /* DNSPropagationChecker.swift */,
+			);
+			path = ACME;
+			sourceTree = "<group>";
+		};
+		5E7A0F04935E54059FCFA39D /* ChannelDeck */ = {
+			isa = PBXGroup;
+			children = (
+				5BAD5721D2D401497CE23C6E /* ACME */,
+				99423DC929B6DCCCE38B728F /* App */,
+				F2F4BE5C6894EC589166C43E /* Core */,
+				0E0C0FDA2C62F96BE818AEAF /* Networking */,
+				C47A6D90F9FDF172F2F919CA /* Persistence */,
+				A3F7175B10E391961605146A /* Playback */,
+				93B76A7239D2A066093ED4CC /* Relay */,
+				2178FA8B59D3AE09DAB7B42F /* Resources */,
+				68CA62725ECAF0D7B19B13C5 /* Security */,
+				EEE17411C57B52B3237E8868 /* Services */,
+				9C72A1531A57364AA63405F3 /* UI */,
+			);
+			path = ChannelDeck;
+			sourceTree = "<group>";
+		};
+		68CA62725ECAF0D7B19B13C5 /* Security */ = {
+			isa = PBXGroup;
+			children = (
+				650AF232FC124B13D8DF75C0 /* EncryptedPlaylistCache.swift */,
+				0458D9F47689E88FA508EF7F /* KeychainStore.swift */,
+			);
+			path = Security;
+			sourceTree = "<group>";
+		};
+		93B76A7239D2A066093ED4CC /* Relay */ = {
+			isa = PBXGroup;
+			children = (
+				2709CC91EC6273A7F8914411 /* AirPlayRelayController.swift */,
+				CA9D9F3B15F6AA3FE602FBC2 /* AirPlayRelayPreferences.swift */,
+				EF00699FCD0549D463896696 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift */,
+				32EAA7BF792EC7CCBC563501 /* AsyncHTTPClientMPEGTSStreamSource.swift */,
+				6207941AF73A5656CA8D0E75 /* FFmpegHLSAudioTranscoder.swift */,
+				8D9CFBE668406250E38311FB /* HLSPlaylistRewriter.swift */,
+				F18F9B280CB4CB404137412E /* HLSRelayCore.swift */,
+				1D96CC1FB2EB6F9CF33296B9 /* HLSRelayResponseDiagnostics.swift */,
+				51AC03890CE96EB0BD473B32 /* HLSRelayServer.swift */,
+				A7102F3130C3A7A379503887 /* HLSRelayTypes.swift */,
+				21DCCB204374167CE4C2298F /* LANAddressResolver.swift */,
+				20E9047CA484CAE6011CA1CE /* URLSessionHLSRelayUpstreamFetcher.swift */,
+			);
+			path = Relay;
+			sourceTree = "<group>";
+		};
+		99423DC929B6DCCCE38B728F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				05612ABECE7CFED18D778DFF /* AppModel.swift */,
+				013EB5282A7507885D2F8819 /* ChannelDeckApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		9C72A1531A57364AA63405F3 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				8E69284C1C499916C2FAACC5 /* ChannelBrowserView.swift */,
+				C915009D8900E3EF1C049CE4 /* ChannelLogoView.swift */,
+				DC9F662E4E644905B8BB20EF /* ContentView.swift */,
+				295034392F963C6820187799 /* DesignSystem.swift */,
+				02D150A65494AEB03330C20D /* PlayerDetailView.swift */,
+				1B2282548A51A61478E67974 /* SettingsView.swift */,
+				E3D62F10A740D269C32C0070 /* SidebarView.swift */,
+				D981749A51E11BF9372334CB /* SourceEditorView.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		A3F7175B10E391961605146A /* Playback */ = {
+			isa = PBXGroup;
+			children = (
+				9A7970A634FE5CCAA3F172AA /* AirPlayRoutePicker.swift */,
+				F49C80027A44952145DCCB24 /* PlayerController.swift */,
+				09D98F5D8A0E12821F0E0035 /* PlayerViewRepresentable.swift */,
+			);
+			path = Playback;
+			sourceTree = "<group>";
+		};
+		C47A6D90F9FDF172F2F919CA /* Persistence */ = {
+			isa = PBXGroup;
+			children = (
+				92208841B175E0A3CFB1C8A6 /* PersistenceModels.swift */,
+			);
+			path = Persistence;
+			sourceTree = "<group>";
+		};
+		EEE17411C57B52B3237E8868 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				D22AF6B8B767BF81F5926DA0 /* M3UParser.swift */,
+				2E96A136F87B7334612D4C50 /* XMLTVParser.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		F1D93EEBDC19257543A639F7 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				884A61116846BC5DF5EA7D77 /* ChannelDeck.app */,
+				82269EF574467C56F9DEEFA3 /* ChannelDeckTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		F2F4BE5C6894EC589166C43E /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				1B008A276727FD82C147F85C /* DomainModels.swift */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		FA81951303C6B6042625B6D9 = {
+			isa = PBXGroup;
+			children = (
+				5E7A0F04935E54059FCFA39D /* ChannelDeck */,
+				2406E707B4B444F9DA0F7160 /* ChannelDeckTests */,
+				F1D93EEBDC19257543A639F7 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		3D5C0C1373CADCB8B2438416 /* ChannelDeck */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F8468DE3E02A06244B006339 /* Build configuration list for PBXNativeTarget "ChannelDeck" */;
+			buildPhases = (
+				A4904C17A9F0500FCE525F6A /* Sources */,
+				3F53DC3C88D0E280F38C2F6C /* Resources */,
+				6E7A578BB9E7299EFABCD288 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ChannelDeck;
+			packageProductDependencies = (
+				62D7DADD1E08A868DD4D0394 /* AcmeSwift */,
+				ECE7DAF6D4D0C4B5AF1F17DF /* AsyncHTTPClient */,
+				326A488F53FB20FE43F551D7 /* X509 */,
+				DE68B2D7BAEEA342EFD2BFA3 /* Logging */,
+			);
+			productName = ChannelDeck;
+			productReference = 884A61116846BC5DF5EA7D77 /* ChannelDeck.app */;
+			productType = "com.apple.product-type.application";
+		};
+		F40DE0B01028DBB8720ED9DD /* ChannelDeckTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4E35C1F509FFCB71137784F /* Build configuration list for PBXNativeTarget "ChannelDeckTests" */;
+			buildPhases = (
+				F74BB01D6F83A1A0BF3A9816 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				781A081C4EC6B77D61B2E346 /* PBXTargetDependency */,
+			);
+			name = ChannelDeckTests;
+			packageProductDependencies = (
+			);
+			productName = ChannelDeckTests;
+			productReference = 82269EF574467C56F9DEEFA3 /* ChannelDeckTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7914B785A74F2614C72E6453 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					3D5C0C1373CADCB8B2438416 = {
+						ProvisioningStyle = Automatic;
+					};
+					F40DE0B01028DBB8720ED9DD = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 991FC97B3F0CECF9BCF839E4 /* Build configuration list for PBXProject "ChannelDeck" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = FA81951303C6B6042625B6D9;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				E508FAF34F92AF1892EB4977 /* XCRemoteSwiftPackageReference "AcmeSwift" */,
+				598A7CB24C8EC92246801068 /* XCRemoteSwiftPackageReference "async-http-client" */,
+				401FB26C7089063802CAE56E /* XCRemoteSwiftPackageReference "jwt-kit" */,
+				DB1540A047C54A3B4E1B0B20 /* XCRemoteSwiftPackageReference "swift-certificates" */,
+				3E5D0D937DECBAE41465B29B /* XCRemoteSwiftPackageReference "swift-log" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = F1D93EEBDC19257543A639F7 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				3D5C0C1373CADCB8B2438416 /* ChannelDeck */,
+				F40DE0B01028DBB8720ED9DD /* ChannelDeckTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3F53DC3C88D0E280F38C2F6C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF0C1FD82115C3FC573D03D0 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A4904C17A9F0500FCE525F6A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8E283DC7BB0273DC787F19CE /* ACMECertificateManager.swift in Sources */,
+				529F7C2FF2707C7F9B6E7904 /* ACMEKeychainMaterialStore.swift in Sources */,
+				BD1DC69934DF4866DDD27D41 /* ACMEModels.swift in Sources */,
+				C0F34BCD8C3AC17D297C8888 /* ACMEProtocols.swift in Sources */,
+				92C88E7EC03A213D77D1BB7C /* AcmeSwiftClientAdapter.swift in Sources */,
+				F569FFEC7DC08C5CC356DD3E /* AirPlayRelayController.swift in Sources */,
+				1C422D0E7C8AA209FB334595 /* AirPlayRelayPreferences.swift in Sources */,
+				59E949BB48CEF43155399C28 /* AirPlayRoutePicker.swift in Sources */,
+				5702E6816E15532FE08EB97B /* AppModel.swift in Sources */,
+				C19C0B10CD7D50D6FA79B062 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift in Sources */,
+				E5D4ED1CCA7D500B324309F7 /* AsyncHTTPClientMPEGTSStreamSource.swift in Sources */,
+				D63978E9DEE4F9AC6E88ECD8 /* ChannelBrowserView.swift in Sources */,
+				07A370766E633A15431C77DE /* ChannelDeckApp.swift in Sources */,
+				CF720C5F6746C31A76889BE5 /* ChannelLogoView.swift in Sources */,
+				9665F56B3B3B15B0A58571EB /* CloudflareDNSClient.swift in Sources */,
+				F61B1151B3DD887D003059E0 /* ContentView.swift in Sources */,
+				48293E2CF51212367A7AE929 /* DNS01.swift in Sources */,
+				7AAF20C1245459B7E24518F1 /* DNSPropagationChecker.swift in Sources */,
+				9B4935DDA7F1B2C30A8F9755 /* DesignSystem.swift in Sources */,
+				E6357FC8B7A3761CC0DF6015 /* DomainModels.swift in Sources */,
+				C5C7275919183E4B3355084D /* EncryptedPlaylistCache.swift in Sources */,
+				09837F52EBCEDA91E891ACDC /* FFmpegHLSAudioTranscoder.swift in Sources */,
+				9B19CBB4FBF424B4F2685D86 /* GzipCompressor.swift in Sources */,
+				4E12CF9CF1DD74C47CC51914 /* GzipDecompressor.swift in Sources */,
+				253D3A6C2D4E76921450F49C /* HLSPlaylistRewriter.swift in Sources */,
+				2FB1A7A50BF41F78496C0E55 /* HLSRelayCore.swift in Sources */,
+				363D1139B28E0E4FB7FCCA39 /* HLSRelayResponseDiagnostics.swift in Sources */,
+				71601B1A7C62E923FD5511F0 /* HLSRelayServer.swift in Sources */,
+				639EA40AC54DD025476E2B79 /* HLSRelayTypes.swift in Sources */,
+				0B323FBBFC0AFA6A428D2CBF /* HTTPClient.swift in Sources */,
+				D70B9AD436611E6F3E28765F /* KeychainStore.swift in Sources */,
+				C727AD201A6C04C9F8416DE0 /* LANAddressResolver.swift in Sources */,
+				76BE4855D8ECE0A85CDB309F /* M3UParser.swift in Sources */,
+				F976BEF6C94DE2231CA0C876 /* PersistenceModels.swift in Sources */,
+				0130765783266356F90D2052 /* PlayerController.swift in Sources */,
+				E4D98BB34D7717555BD17DBF /* PlayerDetailView.swift in Sources */,
+				F362DCA24D1C5B2E3CD72640 /* PlayerViewRepresentable.swift in Sources */,
+				4898D1C1791BD09DC1BEC345 /* SettingsView.swift in Sources */,
+				A9CC7C25A63E5AF6A82DE6FC /* SidebarView.swift in Sources */,
+				80DDBCEC780EE7AF795D1629 /* SourceEditorView.swift in Sources */,
+				C47D8B5DFDCA34721D0FCD33 /* URLSessionHLSRelayUpstreamFetcher.swift in Sources */,
+				5D091E43DB07BC626D1C7FC1 /* XMLTVParser.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F74BB01D6F83A1A0BF3A9816 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				EE4243F8BAC29BF1008C1B4A /* ACMECertificateManagerTests.swift in Sources */,
+				1A503F154E67C9594D5204DF /* LiveRelayProvisioningTests.swift in Sources */,
+				80DD22B0C73BC37EA3B96DDB /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift in Sources */,
+				E045AD7D2F91709A888B53F7 /* NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift in Sources */,
+				D31C0608D47C87E5E8839EB9 /* NetworkCloudflareDNSClientTests.swift in Sources */,
+				9FD6388C853DF93C03D3963F /* NetworkDNSPropagationCheckerTests.swift in Sources */,
+				064892D0E723DF086B3393DE /* NetworkGzipCompressorTests.swift in Sources */,
+				EE628580D213D439912CEB2A /* NetworkGzipDecompressorTests.swift in Sources */,
+				61854410EB02CF020B3736E7 /* NetworkHLSRelayUpstreamFetcherTests.swift in Sources */,
+				89D041E3EA53225A002FD186 /* NetworkHTTPClientTests.swift in Sources */,
+				80E50792B4111C204C90A39A /* ParserM3UParserTests.swift in Sources */,
+				2893AA7F79BC8055669115C2 /* ParserXMLTVParserTests.swift in Sources */,
+				357ACC284FE6A15639BC34C0 /* PlaybackControllerTests.swift in Sources */,
+				72E91A9066F06330EE2907D0 /* RelayFFmpegHLSAudioTranscoderTests.swift in Sources */,
+				C9BA68464B77BDB740AE60FB /* RelayHLSAcceptEncodingTests.swift in Sources */,
+				616C409B1D5CF695A392A2D9 /* RelayHLSCoreTests.swift in Sources */,
+				1FBE45019B08BE021AD0E2E3 /* RelayHLSPlaylistRewriterTests.swift in Sources */,
+				0B49636CB68A0E51FEF91636 /* RelayLANAddressResolverTests.swift in Sources */,
+				0753E01AF42E1B09623FD9B4 /* RelayPreferencesTests.swift in Sources */,
+				60FB02E643596DA6D1D93450 /* RelayResponseDiagnosticsTests.swift in Sources */,
+				D3860487DA18B27BB0F259F2 /* SecurityEncryptedPlaylistCacheTests.swift in Sources */,
+				9111F2E3657EB77E93C2D38B /* SecurityKeychainAbstractionTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		781A081C4EC6B77D61B2E346 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 3D5C0C1373CADCB8B2438416 /* ChannelDeck */;
+			targetProxy = FBA133DAB4DF239EFE51650A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		05C0ED0E6EBDBA1246A0198C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kerimincedayi.ChannelDeckTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ChannelDeck.app/Contents/MacOS/ChannelDeck";
+			};
+			name = Release;
+		};
+		4FCE22D5B57BCA30B1BE7A09 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = "$(inherited) -lz";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		82C48B05FC66B873CD86FA95 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ChannelDeck/Resources/ChannelDeck.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ChannelDeck/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kerimincedayi.ChannelDeck;
+				PRODUCT_NAME = ChannelDeck;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		A91D89BFACEDBB0838A11049 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = "$(inherited) -lz";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		EA676FDC01E152B9F0D8CFF2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = ChannelDeck/Resources/ChannelDeck.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ChannelDeck/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kerimincedayi.ChannelDeck;
+				PRODUCT_NAME = ChannelDeck;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		F9B4FAA7A32DC6024084C844 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.kerimincedayi.ChannelDeckTests;
+				SDKROOT = macosx;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ChannelDeck.app/Contents/MacOS/ChannelDeck";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		991FC97B3F0CECF9BCF839E4 /* Build configuration list for PBXProject "ChannelDeck" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4FCE22D5B57BCA30B1BE7A09 /* Debug */,
+				A91D89BFACEDBB0838A11049 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E4E35C1F509FFCB71137784F /* Build configuration list for PBXNativeTarget "ChannelDeckTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F9B4FAA7A32DC6024084C844 /* Debug */,
+				05C0ED0E6EBDBA1246A0198C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F8468DE3E02A06244B006339 /* Build configuration list for PBXNativeTarget "ChannelDeck" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EA676FDC01E152B9F0D8CFF2 /* Debug */,
+				82C48B05FC66B873CD86FA95 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		3E5D0D937DECBAE41465B29B /* XCRemoteSwiftPackageReference "swift-log" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-log.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+		401FB26C7089063802CAE56E /* XCRemoteSwiftPackageReference "jwt-kit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/vapor/jwt-kit.git";
+			requirement = {
+				kind = exactVersion;
+				version = 4.13.5;
+			};
+		};
+		598A7CB24C8EC92246801068 /* XCRemoteSwiftPackageReference "async-http-client" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/swift-server/async-http-client.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.19.0;
+			};
+		};
+		DB1540A047C54A3B4E1B0B20 /* XCRemoteSwiftPackageReference "swift-certificates" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-certificates.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
+		E508FAF34F92AF1892EB4977 /* XCRemoteSwiftPackageReference "AcmeSwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/m-barthelemy/AcmeSwift.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		326A488F53FB20FE43F551D7 /* X509 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DB1540A047C54A3B4E1B0B20 /* XCRemoteSwiftPackageReference "swift-certificates" */;
+			productName = X509;
+		};
+		62D7DADD1E08A868DD4D0394 /* AcmeSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E508FAF34F92AF1892EB4977 /* XCRemoteSwiftPackageReference "AcmeSwift" */;
+			productName = AcmeSwift;
+		};
+		DE68B2D7BAEEA342EFD2BFA3 /* Logging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3E5D0D937DECBAE41465B29B /* XCRemoteSwiftPackageReference "swift-log" */;
+			productName = Logging;
+		};
+		ECE7DAF6D4D0C4B5AF1F17DF /* AsyncHTTPClient */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 598A7CB24C8EC92246801068 /* XCRemoteSwiftPackageReference "async-http-client" */;
+			productName = AsyncHTTPClient;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7914B785A74F2614C72E6453 /* Project object */;
+}

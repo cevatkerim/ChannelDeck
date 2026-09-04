@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+.run-live-cloudflare-test
+.xcode-derived*/
+DerivedData/
+.build/
+.swiftpm/
+*.xcuserstate
+xcuserdata/
+*.p12
+*.pem
+*.key
+*.cer
+*.crt
+*.log
