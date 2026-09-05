@@ -23,9 +23,6 @@ struct ChannelBrowserView: View {
                     ChannelRow(channel: channel)
                         .tag(channel.stableID)
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            appModel.play(channel)
-                        }
                         .contextMenu {
                             Button(
                                 channel.isFavorite ? "Remove from Favorites" : "Add to Favorites",
