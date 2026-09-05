@@ -98,6 +98,47 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputDirectory.path))
     }
 
+    func testHEVCInputAutomaticallyRestartsWithVideoToolboxH264Output() async throws {
+        let root = try makeTemporaryDirectory(named: "hevc-fallback")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.automaticHEVCFallbackFakeFFmpeg, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable),
+            startupTimeout: .seconds(3),
+            temporaryRoot: root,
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 50)
+        )
+
+        let session = try await transcoder.start(relayURL: Self.relayURL)
+        let master = try String(contentsOf: session.playlistURL, encoding: .utf8)
+
+        XCTAssertTrue(master.contains("RESOLUTION=1920x1080"))
+        XCTAssertTrue(master.contains("FRAME-RATE=25.000"))
+        XCTAssertTrue(master.contains("CODECS=\"avc1.640028,mp4a.40.2\""))
+        await transcoder.stop()
+    }
+
+    func testInputVideoCodecClassificationRequiresFallbackForHEVCButNotH264() {
+        let hevc = "Stream #0:0: Video: hevc (Main 10), yuv420p10le, 3840x2160, 50 fps"
+        let h264 = "Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 25 fps"
+
+        XCTAssertEqual(
+            FFmpegHLSAudioTranscoder.inputVideoCodec(fromFFmpegDiagnostics: hevc),
+            "hevc"
+        )
+        XCTAssertTrue(
+            FFmpegHLSAudioTranscoder.inputRequiresH264Transcode(
+                fromFFmpegDiagnostics: hevc
+            )
+        )
+        XCTAssertFalse(
+            FFmpegHLSAudioTranscoder.inputRequiresH264Transcode(
+                fromFFmpegDiagnostics: h264
+            )
+        )
+    }
+
     func testRawMPEGTSUsesStandardInputAndCancelsItsFeeder() async throws {
         let root = try makeTemporaryDirectory(named: "raw-success")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -376,6 +417,26 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
 
     IFS= read -r payload
     [ "$payload" = "opaque-transport-stream" ] || exit 64
+    """# + "\n" + successfulOutputScript
+
+    private static let automaticHEVCFallbackFakeFFmpeg = #"""
+    #!/bin/sh
+    arguments=" $* "
+    case "$arguments" in
+        *" -c:v copy "*)
+            printf 'Stream #0:0: Video: hevc (Main 10), yuv420p10le, 3840x2160, 50 fps, 50 tbr\n' >&2
+            trap 'exit 0' TERM INT
+            while :; do sleep 1; done
+            ;;
+        *" -c:v h264_videotoolbox "*)
+            case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -vf scale=w='min(1920,iw)':h=-2:flags=lanczos,format=nv12 "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
+            ;;
+        *)
+            exit 64
+            ;;
+    esac
     """# + "\n" + successfulOutputScript
 
     private static let successfulOutputScript = #"""

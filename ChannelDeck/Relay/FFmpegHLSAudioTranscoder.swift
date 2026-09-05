@@ -325,7 +325,7 @@ enum FFmpegProcessFailureReason: Equatable, Sendable {
         case .inputStreamFailed:
             "ChannelDeck could not continue reading this channel's live transport stream."
         case .unexpectedExit:
-            "FFmpeg stopped before preparing AirPlay-compatible audio."
+            "FFmpeg stopped before preparing an AirPlay-compatible stream."
         }
     }
 }
@@ -351,7 +351,7 @@ enum FFmpegHLSAudioTranscoderError: Error, Equatable, LocalizedError, Sendable {
         case let .processFailed(reason):
             reason.userMessage
         case .startupTimedOut:
-            "Preparing AirPlay-compatible audio took too long."
+            "Preparing the AirPlay-compatible stream took too long."
         }
     }
 }
@@ -360,6 +360,15 @@ enum FFmpegHLSAudioTranscoderError: Error, Equatable, LocalizedError, Sendable {
 /// HTTPS relay URL; provider URLs must never cross this boundary.
 actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     static let defaultStartupTimeout: Duration = .seconds(40)
+
+    private enum VideoMode: Sendable, Equatable {
+        case streamCopy
+        case h264VideoToolbox
+    }
+
+    private enum TranscodeAttemptError: Error {
+        case videoRequiresTranscode
+    }
 
     private enum MPEGTSInputPipeError: Error, Sendable {
         case closed
@@ -590,7 +599,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         guard Self.isOpaqueRelayURL(relayURL) else {
             throw FFmpegHLSAudioTranscoderError.invalidRelayURL
         }
-        return try await start(input: .relay(relayURL))
+        return try await startWithAutomaticVideoCompatibility(input: .relay(relayURL))
     }
 
     /// Starts the same rolling rendition from a raw MPEG-TS byte source. The
@@ -598,10 +607,28 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     /// FFmpeg or retained by the transcoder.
     func startMPEGTS(feeding feed: @escaping MPEGTSFeeding) async throws
         -> FFmpegHLSAudioTranscodeSession {
-        try await start(input: .mpegTS(feed))
+        try await startWithAutomaticVideoCompatibility(input: .mpegTS(feed))
     }
 
-    private func start(input: ProcessInput) async throws -> FFmpegHLSAudioTranscodeSession {
+    private func startWithAutomaticVideoCompatibility(
+        input: ProcessInput
+    ) async throws -> FFmpegHLSAudioTranscodeSession {
+        do {
+            return try await startAttempt(input: input, videoMode: .streamCopy)
+        } catch TranscodeAttemptError.videoRequiresTranscode {
+            try Task.checkCancellation()
+            return try await startAttempt(input: input, videoMode: .h264VideoToolbox)
+        } catch let error as FFmpegHLSAudioTranscoderError
+            where error == .processFailed(.incompatibleVideoCodec) {
+            try Task.checkCancellation()
+            return try await startAttempt(input: input, videoMode: .h264VideoToolbox)
+        }
+    }
+
+    private func startAttempt(
+        input: ProcessInput,
+        videoMode: VideoMode
+    ) async throws -> FFmpegHLSAudioTranscodeSession {
         guard let executableURL = locator.executableURL() else {
             throw FFmpegHLSAudioTranscoderError.ffmpegNotFound
         }
@@ -650,6 +677,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         process.environment = ["LANG": "C", "LC_ALL": "C"]
         process.arguments = Self.arguments(
             input: input,
+            videoMode: videoMode,
             segmentTemplate: segmentTemplate,
             mediaPlaylistTemplate: mediaPlaylistTemplate
         )
@@ -699,7 +727,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
         do {
             return try await withTaskCancellationHandler {
-                try await waitUntilReady(id: id)
+                try await waitUntilReady(id: id, videoMode: videoMode)
             } onCancel: {
                 Task { await self.cancel(id: id) }
             }
@@ -716,7 +744,10 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         try? FileManager.default.removeItem(at: active.ownedProcess.directory)
     }
 
-    private func waitUntilReady(id: UUID) async throws -> FFmpegHLSAudioTranscodeSession {
+    private func waitUntilReady(
+        id: UUID,
+        videoMode: VideoMode
+    ) async throws -> FFmpegHLSAudioTranscodeSession {
         let deadline = clock.now.advanced(by: startupTimeout)
         while clock.now < deadline {
             try Task.checkCancellation()
@@ -725,6 +756,12 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             }
             if active.ownedProcess.inputStatus == .sourceFailed {
                 throw FFmpegHLSAudioTranscoderError.processFailed(.inputStreamFailed)
+            }
+            if videoMode == .streamCopy,
+               Self.inputRequiresH264Transcode(
+                   fromFFmpegDiagnostics: active.ownedProcess.diagnosticText()
+               ) {
+                throw TranscodeAttemptError.videoRequiresTranscode
             }
             guard active.ownedProcess.process.isRunning else {
                 let diagnostics = active.ownedProcess.finishDiagnostics()
@@ -865,15 +902,47 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
     private static func arguments(
         input: ProcessInput,
+        videoMode: VideoMode,
         segmentTemplate: String,
         mediaPlaylistTemplate: String
     ) -> [String] {
+        let hardwareInputArguments = videoMode == .h264VideoToolbox
+            ? ["-hwaccel", "videotoolbox"]
+            : []
         let inputArguments: [String]
         switch input {
         case let .relay(relayURL):
-            inputArguments = ["-re", "-i", relayURL.absoluteString]
+            inputArguments = ["-re"] + hardwareInputArguments + ["-i", relayURL.absoluteString]
         case .mpegTS:
-            inputArguments = ["-f", "mpegts", "-re", "-i", "pipe:0"]
+            inputArguments = ["-f", "mpegts", "-re"]
+                + hardwareInputArguments
+                + ["-i", "pipe:0"]
+        }
+
+        let videoArguments: [String]
+        switch videoMode {
+        case .streamCopy:
+            videoArguments = [
+                "-c:v", "copy",
+                "-bsf:v", "h264_mp4toannexb",
+            ]
+        case .h264VideoToolbox:
+            videoArguments = [
+                // UHD services commonly use 10-bit HEVC in MPEG-TS. Convert
+                // only those non-H.264 inputs with Apple's hardware encoder,
+                // and cap the receiver rendition at 1080p for broad AirPlay
+                // compatibility and predictable LAN bandwidth.
+                "-vf", "scale=w='min(1920,iw)':h=-2:flags=lanczos,format=nv12",
+                "-c:v", "h264_videotoolbox",
+                "-profile:v", "high",
+                "-level:v", "4.2",
+                "-b:v", "10000k",
+                "-maxrate:v", "12000k",
+                "-bufsize:v", "20000k",
+                "-allow_sw", "1",
+                "-realtime", "1",
+                "-force_key_frames", "expr:gte(t,n_forced*4)",
+            ]
         }
 
         return [
@@ -891,8 +960,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             "-map", "0:a:0",
             "-sn",
             "-dn",
-            "-c:v", "copy",
-            "-bsf:v", "h264_mp4toannexb",
+        ] + videoArguments + [
             "-c:a", "aac",
             "-ac", "2",
             "-ar", "48000",
@@ -911,6 +979,31 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             "-hls_segment_filename", segmentTemplate,
             mediaPlaylistTemplate,
         ]
+    }
+
+    /// Returns only the normalized codec identifier from FFmpeg's private
+    /// stream description. The diagnostic itself can contain relay tokens and
+    /// must never leave this type.
+    static func inputVideoCodec(fromFFmpegDiagnostics diagnostics: String) -> String? {
+        guard let expression = try? NSRegularExpression(
+            pattern: #"Video:\s*([A-Za-z0-9_]+)"#,
+            options: [.caseInsensitive]
+        ),
+        let match = expression.firstMatch(
+            in: diagnostics,
+            range: NSRange(diagnostics.startIndex..., in: diagnostics)
+        ),
+        let codecRange = Range(match.range(at: 1), in: diagnostics) else {
+            return nil
+        }
+        return diagnostics[codecRange].lowercased()
+    }
+
+    static func inputRequiresH264Transcode(fromFFmpegDiagnostics diagnostics: String) -> Bool {
+        guard let codec = inputVideoCodec(fromFFmpegDiagnostics: diagnostics) else {
+            return false
+        }
+        return codec != "h264"
     }
 
     private static func isOpaqueRelayURL(_ url: URL) -> Bool {

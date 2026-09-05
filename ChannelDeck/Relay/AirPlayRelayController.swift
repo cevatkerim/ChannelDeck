@@ -274,12 +274,12 @@ final class AirPlayRelayController {
             playbackIsRelayed = false
             return sourceURL
         }
-        playbackNotice = "Preparing AirPlay-compatible audio…"
+        playbackNotice = "Preparing AirPlay-compatible stream…"
         playbackIsRelayed = true
         do {
             let session = try await relayServer.relayURL(for: sourceURL)
             try Task.checkCancellation()
-            playbackNotice = "Secure AirPlay relay active · AAC audio"
+            playbackNotice = "Secure AirPlay relay active · H.264/AAC"
             playbackIsRelayed = true
             return session.playlistURL
         } catch is CancellationError {
