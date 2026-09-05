@@ -9,7 +9,7 @@
 
 ## Product and UX
 
-- Use a three-column `NavigationSplitView`: library/playlists/groups in the sidebar, a searchable channel browser in the content column, and a large native player with programme information in the detail column.
+- Use a three-column `NavigationSplitView`: library/playlists/groups in the sidebar, a globally searchable channel browser in the content column, and a large native player with programme information in the detail column. Keep playlist group trees collapsible, expand the active playlist automatically, and show channel counts so very large catalogues remain easy to navigate.
 - Provide first-run and playlist-management sheets for display name, HTTP or HTTPS M3U URL, and optional EPG override. Prefer HTTPS and show an inline privacy warning before accepting an unencrypted HTTP source. Support adding, editing, reordering, refreshing, and confirmed removal of multiple sources.
 - Show channel logo, name, group, live state, current/next programme, and favorite state. Downsample logos off the main thread and share a bounded decoded-image cache across recycled list rows. Selecting a channel immediately replaces the single active player item.
 - Include Favorites and the 20 most recent successfully played channels, native playback controls, fullscreen, Picture in Picture, an explicit AirPlay picker, loading/buffering indicators, retry actions, and useful empty/error states.
@@ -26,6 +26,7 @@
 - Fetch playlists every six hours and EPG feeds every twelve hours, plus manual refresh, using ETag/Last-Modified conditional requests. Replace cached state only after a complete successful fetch and parse; retain the previous catalogue on failure.
 - Decompress `.xml.gz` feeds with system zlib, stream-parse XMLTV with `XMLParser`, match exact TVG IDs, and retain relevant programmes from two hours in the past through 36 hours ahead.
 - Implement actor-isolated playlist/EPG repositories and secret storage, with a `@MainActor` observable application model and player controller.
+- Rebuild channel/group/source lookup indexes only when catalogue data changes. Run normalized, diacritic-insensitive global channel searches against an immutable value index off the main actor after a short typing debounce; rank exact and prefix channel-name matches ahead of group or playlist metadata matches.
 
 ## Playback, AirPlay, and Security
 

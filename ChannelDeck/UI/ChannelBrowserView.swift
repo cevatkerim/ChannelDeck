@@ -6,6 +6,7 @@ struct ChannelBrowserView: View {
     var body: some View {
         @Bindable var appModel = appModel
         let filteredChannels = appModel.filteredChannels
+        let isGlobalSearch = appModel.isGlobalChannelSearchActive
 
         Group {
             if appModel.sidebarSelection == .recordings {
@@ -19,11 +20,18 @@ struct ChannelBrowserView: View {
                     Button("Add Playlist") { appModel.beginAddingSource() }
                         .buttonStyle(.borderedProminent)
                 }
+            } else if isGlobalSearch, appModel.isSearchingChannels {
+                ProgressView("Searching all channels…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityLabel("Searching all channels")
             } else if filteredChannels.isEmpty {
                 ContentUnavailableView.search(text: appModel.searchText)
             } else {
                 List(filteredChannels, id: \.stableID, selection: $appModel.selectedChannelID) { channel in
-                    ChannelRow(channel: channel)
+                    ChannelRow(
+                        channel: channel,
+                        searchContext: isGlobalSearch ? appModel.searchContext(for: channel) : nil
+                    )
                         .tag(channel.stableID)
                         .contentShape(Rectangle())
                         .contextMenu {
@@ -48,7 +56,7 @@ struct ChannelBrowserView: View {
             placement: .toolbar,
             prompt: appModel.sidebarSelection == .recordings
                 ? "Recordings"
-                : "Channels or programmes"
+                : "Search all channels"
         )
         .onChange(of: appModel.selectedChannelID) { _, newValue in
             guard let newValue, let channel = appModel.channel(withID: newValue) else { return }
@@ -187,6 +195,7 @@ struct RecordingThumbnailView: View {
 private struct ChannelRow: View {
     @Environment(AppModel.self) private var appModel
     let channel: ChannelRecord
+    let searchContext: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -203,6 +212,13 @@ private struct ChannelRow: View {
                             .foregroundStyle(.tint)
                             .accessibilityLabel("Playing")
                     }
+                }
+
+                if let searchContext {
+                    Text(searchContext)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
 
                 if let current = appModel.currentProgramme(for: channel) {

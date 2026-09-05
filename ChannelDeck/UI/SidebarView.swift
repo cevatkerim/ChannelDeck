@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SidebarView: View {
     @Environment(AppModel.self) private var appModel
+    @State private var expandedSourceIDs: Set<UUID> = []
 
     var body: some View {
         @Bindable var appModel = appModel
@@ -19,7 +20,7 @@ struct SidebarView: View {
             }
 
             ForEach(appModel.sources, id: \.id) { source in
-                Section {
+                DisclosureGroup(isExpanded: expansionBinding(for: source.id)) {
                     Label("All Channels", systemImage: "rectangle.grid.1x2")
                         .tag(SidebarSelection.source(source.id))
 
@@ -28,10 +29,11 @@ struct SidebarView: View {
                             .lineLimit(1)
                             .tag(SidebarSelection.group(source.id, group))
                     }
-                } header: {
+                } label: {
                     HStack(spacing: 6) {
                         Text(source.displayName)
                             .lineLimit(1)
+                        Spacer(minLength: 4)
                         if appModel.refreshingSourceIDs.contains(source.id) {
                             ProgressView().controlSize(.mini)
                         }
@@ -41,6 +43,10 @@ struct SidebarView: View {
                                 .help(message)
                                 .accessibilityLabel("Playlist needs attention: \(message)")
                         }
+                        Text(appModel.channelCount(for: source.id), format: .number)
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .accessibilityLabel("\(appModel.channelCount(for: source.id)) channels")
                     }
                 }
                 .contextMenu {
@@ -70,6 +76,17 @@ struct SidebarView: View {
         .listStyle(.sidebar)
         .navigationTitle("ChannelDeck")
         .frame(minWidth: ChannelDeckStyle.sidebarMinimumWidth)
+        .onAppear {
+            expandCurrentOrFirstSource()
+        }
+        .onChange(of: appModel.sidebarSelection) { _, _ in
+            guard let sourceID = appModel.sourceID(for: appModel.sidebarSelection) else { return }
+            expandedSourceIDs.insert(sourceID)
+        }
+        .onChange(of: appModel.sources.map(\.id)) { _, sourceIDs in
+            expandedSourceIDs.formIntersection(Set(sourceIDs))
+            expandCurrentOrFirstSource()
+        }
         .toolbar {
             ToolbarItemGroup {
                 Button("Add Playlist", systemImage: "plus") {
@@ -83,6 +100,26 @@ struct SidebarView: View {
                 .help("Refresh selected playlist")
                 .disabled(appModel.sourceID(for: appModel.sidebarSelection) == nil)
             }
+        }
+    }
+
+    private func expansionBinding(for sourceID: UUID) -> Binding<Bool> {
+        Binding {
+            expandedSourceIDs.contains(sourceID)
+        } set: { isExpanded in
+            if isExpanded {
+                expandedSourceIDs.insert(sourceID)
+            } else {
+                expandedSourceIDs.remove(sourceID)
+            }
+        }
+    }
+
+    private func expandCurrentOrFirstSource() {
+        if let sourceID = appModel.sourceID(for: appModel.sidebarSelection) {
+            expandedSourceIDs.insert(sourceID)
+        } else if expandedSourceIDs.isEmpty, let sourceID = appModel.sources.first?.id {
+            expandedSourceIDs.insert(sourceID)
         }
     }
 }

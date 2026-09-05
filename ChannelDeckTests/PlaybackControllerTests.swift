@@ -79,6 +79,66 @@ final class ProgrammeGuideIndexTests: XCTestCase {
     }
 }
 
+final class ChannelSearchIndexTests: XCTestCase {
+    func testMatchesAcrossChannelGroupAndPlaylistWithFoldedTerms() {
+        let index = ChannelSearchIndex(entries: [
+            entry(
+                id: "sports",
+                name: "Télévision Málaga",
+                group: "Live Sports",
+                source: "Premium Europe",
+                sourceOrder: 0,
+                channelOrder: 5
+            ),
+            entry(
+                id: "news",
+                name: "World News",
+                group: "News",
+                source: "Basic",
+                sourceOrder: 1,
+                channelOrder: 0
+            ),
+        ])
+
+        XCTAssertEqual(index.matchingIDs(for: "television malaga"), ["sports"])
+        XCTAssertEqual(index.matchingIDs(for: "premium sports"), ["sports"])
+        XCTAssertEqual(index.matchingIDs(for: "  WORLD   news "), ["news"])
+    }
+
+    func testRanksExactAndPrefixNamesBeforeMetadataMatches() {
+        let index = ChannelSearchIndex(entries: [
+            entry(id: "metadata", name: "One", group: "Sky Sports", source: "A", sourceOrder: 0, channelOrder: 0),
+            entry(id: "contains", name: "The Sky Sports Show", group: "TV", source: "A", sourceOrder: 0, channelOrder: 1),
+            entry(id: "prefix", name: "Sky Sports News", group: "TV", source: "B", sourceOrder: 1, channelOrder: 0),
+            entry(id: "exact", name: "Sky Sports", group: "TV", source: "B", sourceOrder: 1, channelOrder: 1),
+        ])
+
+        XCTAssertEqual(
+            index.matchingIDs(for: "sky sports"),
+            ["exact", "prefix", "contains", "metadata"]
+        )
+        XCTAssertTrue(index.matchingIDs(for: "   ").isEmpty)
+    }
+
+    private func entry(
+        id: String,
+        name: String,
+        group: String,
+        source: String,
+        sourceOrder: Int,
+        channelOrder: Int
+    ) -> ChannelSearchEntry {
+        ChannelSearchEntry(
+            stableID: id,
+            channelName: name,
+            groupName: group,
+            sourceName: source,
+            sourceOrder: sourceOrder,
+            channelOrder: channelOrder
+        )
+    }
+}
+
 final class PlaybackControllerTests: XCTestCase {
     func testLiveDVRStateTracksPositionAndDistanceFromLiveEdge() {
         let state = LiveDVRState.make(

@@ -100,6 +100,73 @@ struct ProgrammeGuideIndex {
     }
 }
 
+struct ChannelSearchEntry: Equatable, Sendable {
+    let stableID: String
+    let normalizedName: String
+    let normalizedText: String
+    let sourceOrder: Int
+    let channelOrder: Int
+
+    init(
+        stableID: String,
+        channelName: String,
+        groupName: String,
+        sourceName: String,
+        sourceOrder: Int,
+        channelOrder: Int
+    ) {
+        self.stableID = stableID
+        normalizedName = ChannelSearchIndex.normalize(channelName)
+        normalizedText = ChannelSearchIndex.normalize(
+            "\(channelName) \(groupName) \(sourceName)"
+        )
+        self.sourceOrder = sourceOrder
+        self.channelOrder = channelOrder
+    }
+}
+
+struct ChannelSearchIndex: Equatable, Sendable {
+    let entries: [ChannelSearchEntry]
+
+    init(entries: [ChannelSearchEntry] = []) {
+        self.entries = entries
+    }
+
+    func matchingIDs(for query: String) -> [String] {
+        let normalizedQuery = Self.normalize(query)
+        let terms = normalizedQuery.split(separator: " ").map(String.init)
+        guard !terms.isEmpty else { return [] }
+
+        return entries
+            .filter { entry in
+                terms.allSatisfy(entry.normalizedText.contains)
+            }
+            .sorted { lhs, rhs in
+                let leftRank = rank(lhs, query: normalizedQuery)
+                let rightRank = rank(rhs, query: normalizedQuery)
+                if leftRank != rightRank { return leftRank < rightRank }
+                if lhs.sourceOrder != rhs.sourceOrder { return lhs.sourceOrder < rhs.sourceOrder }
+                if lhs.channelOrder != rhs.channelOrder { return lhs.channelOrder < rhs.channelOrder }
+                return lhs.stableID < rhs.stableID
+            }
+            .map(\.stableID)
+    }
+
+    static func normalize(_ value: String) -> String {
+        value
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    private func rank(_ entry: ChannelSearchEntry, query: String) -> Int {
+        if entry.normalizedName == query { return 0 }
+        if entry.normalizedName.hasPrefix(query) { return 1 }
+        if entry.normalizedName.contains(query) { return 2 }
+        return 3
+    }
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -130,7 +197,15 @@ final class AppModel {
     var sidebarSelection: SidebarSelection? = .favorites
     var selectedChannelID: String?
     var selectedRecordingID: UUID?
-    var searchText = ""
+    var searchText = "" {
+        didSet {
+            guard searchText != oldValue else { return }
+            scheduleGlobalChannelSearch()
+        }
+    }
+    var globalChannelSearchResultIDs: [String] = []
+    var isSearchingChannels = false
+    private(set) var channelIndexRevision = 0
     var refreshingSourceIDs: Set<UUID> = []
     var isLoadingProgrammeGuide = false
 
@@ -165,7 +240,20 @@ final class AppModel {
     @ObservationIgnored private var bufferRecordingTask: Task<Void, Never>?
     @ObservationIgnored private var recordingFinalizationTask: Task<Void, Never>?
     @ObservationIgnored private var activeRecordingMetadata: PendingRecordingMetadata?
+    @ObservationIgnored private var channelByID: [String: ChannelRecord] = [:]
+    @ObservationIgnored private var channelsBySourceID: [UUID: [ChannelRecord]] = [:]
+    @ObservationIgnored private var channelsByGroup: [ChannelGroupKey: [ChannelRecord]] = [:]
+    @ObservationIgnored private var groupNamesBySourceID: [UUID: [String]] = [:]
+    @ObservationIgnored private var channelCountBySourceID: [UUID: Int] = [:]
+    @ObservationIgnored private var sourceNameByID: [UUID: String] = [:]
+    @ObservationIgnored private var channelSearchIndex = ChannelSearchIndex()
+    @ObservationIgnored private var channelSearchTask: Task<Void, Never>?
     private var programmeGuideIndex = ProgrammeGuideIndex()
+
+    private struct ChannelGroupKey: Hashable {
+        let sourceID: UUID
+        let groupName: String
+    }
 
     init(
         modelContainer: ModelContainer,
@@ -199,33 +287,27 @@ final class AppModel {
     }
 
     var filteredChannels: [ChannelRecord] {
+        _ = channelIndexRevision
+        if isGlobalChannelSearchActive {
+            return globalChannelSearchResultIDs.compactMap { channelByID[$0] }
+        }
+
         let base: [ChannelRecord]
         switch sidebarSelection {
         case .favorites:
             base = channels.filter(\.isFavorite)
         case .recents:
-            let positions = Dictionary(uniqueKeysWithValues: recents.enumerated().map { ($0.element.channelStableID, $0.offset) })
-            base = channels
-                .filter { positions[$0.stableID] != nil }
-                .sorted { (positions[$0.stableID] ?? .max) < (positions[$1.stableID] ?? .max) }
+            base = recents.compactMap { channelByID[$0.channelStableID] }
         case .recordings:
             base = []
         case .source(let sourceID):
-            base = channels.filter { $0.sourceID == sourceID }
+            base = channelsBySourceID[sourceID] ?? []
         case .group(let sourceID, let group):
-            base = channels.filter { $0.sourceID == sourceID && $0.groupName == group }
+            base = channelsByGroup[ChannelGroupKey(sourceID: sourceID, groupName: group)] ?? []
         case nil:
             base = channels
         }
-
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return base }
-        return base.filter { channel in
-            channel.name.localizedStandardContains(query)
-                || channel.groupName.localizedStandardContains(query)
-                || currentProgramme(for: channel)?.title.localizedStandardContains(query) == true
-                || nextProgramme(for: channel)?.title.localizedStandardContains(query) == true
-        }
+        return base
     }
 
     var filteredRecordings: [RecordingRecord] {
@@ -240,7 +322,8 @@ final class AppModel {
     }
 
     var browserTitle: String {
-        switch sidebarSelection {
+        if isGlobalChannelSearchActive { return "Search All Channels" }
+        return switch sidebarSelection {
         case .favorites: "Favorites"
         case .recents: "Recently Watched"
         case .recordings: "Recordings"
@@ -260,6 +343,11 @@ final class AppModel {
     var sourceDraftUsesUnencryptedTransport: Bool {
         SourceURLPolicy.usesUnencryptedTransport(sourceDraft.playlistURL)
             || SourceURLPolicy.usesUnencryptedTransport(sourceDraft.epgURL)
+    }
+
+    var isGlobalChannelSearchActive: Bool {
+        sidebarSelection != .recordings
+            && !ChannelSearchIndex.normalize(searchText).isEmpty
     }
 
     func bootstrap() async {
@@ -296,9 +384,20 @@ final class AppModel {
     }
 
     func groups(for sourceID: UUID) -> [String] {
-        Array(Set(channels.lazy.filter { $0.sourceID == sourceID }.map(\.groupName)))
-            .filter { !$0.isEmpty }
-            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        _ = channelIndexRevision
+        return groupNamesBySourceID[sourceID] ?? []
+    }
+
+    func channelCount(for sourceID: UUID) -> Int {
+        _ = channelIndexRevision
+        return channelCountBySourceID[sourceID] ?? 0
+    }
+
+    func searchContext(for channel: ChannelRecord) -> String {
+        _ = channelIndexRevision
+        let sourceName = sourceNameByID[channel.sourceID] ?? "Playlist"
+        guard !channel.groupName.isEmpty else { return sourceName }
+        return "\(sourceName) · \(channel.groupName)"
     }
 
     func sourceID(for selection: SidebarSelection?) -> UUID? {
@@ -309,7 +408,8 @@ final class AppModel {
     }
 
     func channel(withID stableID: String) -> ChannelRecord? {
-        channels.first { $0.stableID == stableID }
+        _ = channelIndexRevision
+        return channelByID[stableID]
     }
 
     func currentProgramme(for channel: ChannelRecord, at date: Date = .now) -> ProgrammeRecord? {
@@ -1061,10 +1161,82 @@ final class AppModel {
                 .sorted { lhs, rhs in
                     lhs.sourceID == rhs.sourceID ? lhs.sortIndex < rhs.sortIndex : lhs.name < rhs.name
                 }
+            rebuildChannelIndexes()
             reloadRecents()
             reloadRecordings()
         } catch {
             presentedAlert = AppAlert(title: "Library Error", message: "The local channel library could not be read.")
+        }
+    }
+
+    private func rebuildChannelIndexes() {
+        sourceNameByID = Dictionary(
+            sources.map { ($0.id, $0.displayName) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let sourceOrderByID = Dictionary(
+            uniqueKeysWithValues: sources.enumerated().map { ($0.element.id, $0.offset) }
+        )
+        channelByID = Dictionary(
+            channels.map { ($0.stableID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        channelsBySourceID = Dictionary(grouping: channels, by: \.sourceID)
+        channelCountBySourceID = channelsBySourceID.mapValues(\.count)
+
+        channelsByGroup = Dictionary(
+            grouping: channels,
+            by: { ChannelGroupKey(sourceID: $0.sourceID, groupName: $0.groupName) }
+        )
+        groupNamesBySourceID = channelsBySourceID.mapValues { sourceChannels in
+            Array(Set(sourceChannels.lazy.map(\.groupName)))
+                .filter { !$0.isEmpty }
+                .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
+
+        channelSearchIndex = ChannelSearchIndex(
+            entries: channels.map { channel in
+                ChannelSearchEntry(
+                    stableID: channel.stableID,
+                    channelName: channel.name,
+                    groupName: channel.groupName,
+                    sourceName: sourceNameByID[channel.sourceID] ?? "",
+                    sourceOrder: sourceOrderByID[channel.sourceID] ?? .max,
+                    channelOrder: channel.sortIndex
+                )
+            }
+        )
+        channelIndexRevision &+= 1
+        scheduleGlobalChannelSearch()
+    }
+
+    private func scheduleGlobalChannelSearch() {
+        channelSearchTask?.cancel()
+        let query = ChannelSearchIndex.normalize(searchText)
+        guard !query.isEmpty else {
+            globalChannelSearchResultIDs = []
+            isSearchingChannels = false
+            return
+        }
+
+        globalChannelSearchResultIDs = []
+        isSearchingChannels = true
+        let index = channelSearchIndex
+        channelSearchTask = Task { @MainActor [weak self] in
+            do {
+                // Coalesce fast typing without blocking navigation or playback.
+                try await Task.sleep(for: .milliseconds(80))
+            } catch {
+                return
+            }
+            let resultIDs = await Task.detached(priority: .userInitiated) {
+                index.matchingIDs(for: query)
+            }.value
+            guard !Task.isCancelled,
+                  let self,
+                  ChannelSearchIndex.normalize(searchText) == query else { return }
+            globalChannelSearchResultIDs = resultIDs
+            isSearchingChannels = false
         }
     }
 
