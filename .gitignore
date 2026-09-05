@@ -16,3 +16,5 @@ xcuserdata/
 *.crt
 *.log
 *.profraw
+.release-build/
+dist/

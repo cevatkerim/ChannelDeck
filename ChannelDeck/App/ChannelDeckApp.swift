@@ -124,6 +124,27 @@ private enum ChannelDeckBrand {
             )
         )
 
+        if let noticesURL = Bundle.main.resourceURL?.appendingPathComponent("ThirdPartyNotices"),
+           FileManager.default.fileExists(atPath: noticesURL.path) {
+            credits.append(NSAttributedString(
+                string: "\nIncludes FFmpeg under the GNU LGPL.\n",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .paragraphStyle: paragraph,
+                ]
+            ))
+            credits.append(NSAttributedString(
+                string: "Third-party licenses and source information",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                    .foregroundColor: NSColor.linkColor,
+                    .link: noticesURL,
+                    .paragraphStyle: paragraph,
+                ]
+            ))
+        }
+
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "ChannelDeck",
             .credits: credits,

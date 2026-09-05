@@ -5,8 +5,8 @@
 <h1 align="center">ChannelDeck</h1>
 
 <p align="center">
-  A privacy-minded, native macOS IPTV player with fast large-playlist browsing,<br>
-  live DVR, local recording, and receiver-compatible AirPlay.
+  A native macOS IPTV player with global channel search,<br>
+  live TV rewind, original-quality recording, and AirPlay.
 </p>
 
 <p align="center">
@@ -53,7 +53,19 @@ ChannelDeck does **not** include channels, playlists, subscriptions, or credenti
 > [!NOTE]
 > Recording length is not capped by ChannelDeck, but available disk space, provider continuity, and the Mac remaining awake still apply.
 
-## Requirements
+## Install a test build
+
+Download the DMG and checksums from the [v0.1.0 testing release](https://github.com/cevatkerim/ChannelDeck/releases/tag/v0.1.0). Release access follows the repository's visibility and permissions.
+
+The DMG packaging workflow targets **Apple Silicon Macs running macOS 15 or newer**. It includes FFmpeg, so installing the packaged app does not require Xcode or Homebrew. This is an **unsigned, unnotarized testing build**; macOS will warn that Apple cannot verify its developer.
+
+Open the DMG, drag **ChannelDeck** into **Applications**, then open the installed app. If macOS blocks it and you trust the build, use **System Settings → Privacy & Security → Open Anyway** and confirm the prompt. See [Apple's instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac). A managed Mac may not permit this exception.
+
+See the [distribution guide](docs/distribution.md) for building a DMG locally, verifying it, and the future signing and notarization process. A local build does not automatically publish a GitHub release.
+
+## Build from source
+
+### Requirements
 
 - macOS 15 or newer
 - Xcode 16 or newer with Swift 6
@@ -66,9 +78,9 @@ Install FFmpeg with Homebrew:
 brew install ffmpeg
 ```
 
-A distributable build can instead bundle an appropriately licensed `ffmpeg` auxiliary executable inside the application.
+The DMG workflow builds its own LGPL FFmpeg executable from pinned source and bundles it inside the application; it does not redistribute your Homebrew installation.
 
-## Quick start
+### Quick start
 
 1. Clone the repository.
 2. Open `ChannelDeck.xcodeproj` in Xcode.
@@ -179,6 +191,8 @@ The test suite covers playlist and guide parsing, network and redirect policy, e
 | `ChannelDeck/Security` | Keychain access and encrypted playlist cache |
 | `ChannelDeck/Persistence` | SwiftData records |
 | `ChannelDeckTests` | Unit, integration, and opt-in live tests |
+| `Scripts` | FFmpeg build and DMG packaging workflows |
+| `docs/distribution.md` | Test installation, release verification, and signing roadmap |
 
 See [`plan.md`](plan.md) for the original implementation specification and explicit v1 boundaries.
 
@@ -191,3 +205,5 @@ Issues and focused pull requests are welcome. Please keep provider credentials a
 ChannelDeck is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). You may use, modify, and distribute it for permitted noncommercial purposes; commercial use is not granted by this license.
 
 Because the license restricts commercial use, ChannelDeck is intentionally described as **source-available**, not OSI-approved open-source software.
+
+The packaged app uses a separate [FFmpeg](https://ffmpeg.org) executable under **LGPL 2.1 or later**. ChannelDeck's noncommercial restriction does not apply to FFmpeg or other third-party dependencies, which retain their own licenses. The distribution workflow includes dependency notices and the corresponding FFmpeg source and build instructions; keep these with any redistributed build. See [FFmpeg's licensing information](https://ffmpeg.org/legal.html) and the [distribution guide](docs/distribution.md).
