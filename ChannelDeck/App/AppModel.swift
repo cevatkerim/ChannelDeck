@@ -138,9 +138,11 @@ final class AppModel {
         guard !didBootstrap else { return }
         didBootstrap = true
         reloadLocalState()
-        Task { [airPlayRelayController] in
-            await airPlayRelayController.bootstrap()
-        }
+        // Enter the relay bootstrap phase before yielding to playlist refresh
+        // work. Channel selection can still interleave while networking is in
+        // progress, but playbackURL(for:) will now wait for that in-flight
+        // restore instead of silently bypassing the persisted secure relay.
+        await airPlayRelayController.bootstrap()
 
         if sources.isEmpty {
             beginAddingSource()

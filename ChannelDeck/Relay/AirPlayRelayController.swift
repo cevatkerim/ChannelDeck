@@ -269,8 +269,26 @@ final class AirPlayRelayController {
     /// Returns the receiver-reachable URL when the relay is ready. Unsupported
     /// sources safely fall back to direct native playback on this Mac.
     func playbackURL(for sourceURL: URL) async -> URL {
+        if phase.isBusy {
+            playbackNotice = "Starting secure AirPlay relay…"
+            playbackIsRelayed = false
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(90))
+            while phase.isBusy, clock.now < deadline {
+                do {
+                    try await Task.sleep(for: .milliseconds(100))
+                } catch {
+                    playbackNotice = nil
+                    playbackIsRelayed = false
+                    return sourceURL
+                }
+            }
+        }
+
         guard phase == .ready, let relayServer else {
-            playbackNotice = nil
+            playbackNotice = phase.isBusy
+                ? "Secure relay startup took too long. Playing directly on this Mac."
+                : "Secure relay is not ready. Playing directly on this Mac."
             playbackIsRelayed = false
             return sourceURL
         }
