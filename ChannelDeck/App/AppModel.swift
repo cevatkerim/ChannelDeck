@@ -29,6 +29,31 @@ struct AppAlert: Identifiable, Equatable {
     }
 }
 
+/// Keeps programme lookups proportional to one channel's short schedule rather
+/// than scanning the complete guide for every visible list row.
+struct ProgrammeGuideIndex {
+    private let schedules: [String: [ProgrammeRecord]]
+
+    init(programmes: [ProgrammeRecord] = []) {
+        schedules = Dictionary(grouping: programmes, by: \.channelStableID)
+            .mapValues { schedule in
+                schedule.sorted { $0.startDate < $1.startDate }
+            }
+    }
+
+    func current(channelStableID: String, at date: Date) -> ProgrammeRecord? {
+        schedules[channelStableID]?.last { programme in
+            programme.startDate <= date && date < programme.endDate
+        }
+    }
+
+    func next(channelStableID: String, at date: Date) -> ProgrammeRecord? {
+        let schedule = schedules[channelStableID] ?? []
+        let threshold = current(channelStableID: channelStableID, at: date)?.endDate ?? date
+        return schedule.first { $0.startDate >= threshold }
+    }
+}
+
 @MainActor
 @Observable
 final class AppModel {
@@ -44,6 +69,7 @@ final class AppModel {
     var selectedChannelID: String?
     var searchText = ""
     var refreshingSourceIDs: Set<UUID> = []
+    var isLoadingProgrammeGuide = false
 
     var isPresentingSourceEditor = false
     var isSavingSource = false
@@ -63,6 +89,7 @@ final class AppModel {
     @ObservationIgnored private var pendingRecentChannelID: String?
     @ObservationIgnored private var didBootstrap = false
     @ObservationIgnored private var playbackPreparationTask: Task<Void, Never>?
+    private var programmeGuideIndex = ProgrammeGuideIndex()
 
     init(
         modelContainer: ModelContainer,
@@ -77,7 +104,10 @@ final class AppModel {
         self.airPlayRelayController = AirPlayRelayController(keychain: resolvedKeychain)
         self.encryptedCache = EncryptedPlaylistCache(keyStore: resolvedKeychain)
         self.httpClient = httpClient
-        reloadLocalState()
+        // Channels are enough to draw the first frame. Loading thousands of
+        // guide rows here made App.init block and produced a beachball.
+        reloadCoreState()
+        isLoadingProgrammeGuide = !sources.isEmpty
         observePlaybackForRecents()
     }
 
@@ -137,7 +167,7 @@ final class AppModel {
     func bootstrap() async {
         guard !didBootstrap else { return }
         didBootstrap = true
-        reloadLocalState()
+        await Task.yield()
         // Enter the relay bootstrap phase before yielding to playlist refresh
         // work. Channel selection can still interleave while networking is in
         // progress, but playbackURL(for:) will now wait for that in-flight
@@ -145,6 +175,7 @@ final class AppModel {
         await airPlayRelayController.bootstrap()
 
         if sources.isEmpty {
+            isLoadingProgrammeGuide = false
             beginAddingSource()
             return
         }
@@ -152,6 +183,8 @@ final class AppModel {
         for source in sources {
             await loadCachedPlaylist(for: source.id)
         }
+        reloadProgrammeState()
+        isLoadingProgrammeGuide = false
 
         if case .favorites = sidebarSelection, let firstSource = sources.first {
             sidebarSelection = .source(firstSource.id)
@@ -182,16 +215,11 @@ final class AppModel {
     }
 
     func currentProgramme(for channel: ChannelRecord, at date: Date = .now) -> ProgrammeRecord? {
-        programmes
-            .filter { $0.channelStableID == channel.stableID && $0.startDate <= date && date < $0.endDate }
-            .max { $0.startDate < $1.startDate }
+        programmeGuideIndex.current(channelStableID: channel.stableID, at: date)
     }
 
     func nextProgramme(for channel: ChannelRecord, at date: Date = .now) -> ProgrammeRecord? {
-        let threshold = currentProgramme(for: channel, at: date)?.endDate ?? date
-        return programmes
-            .filter { $0.channelStableID == channel.stableID && $0.startDate >= threshold }
-            .min { $0.startDate < $1.startDate }
+        programmeGuideIndex.next(channelStableID: channel.stableID, at: date)
     }
 
     func isPlaying(_ channel: ChannelRecord) -> Bool {
@@ -231,7 +259,6 @@ final class AppModel {
     func toggleFavorite(_ channel: ChannelRecord) {
         channel.isFavorite.toggle()
         saveContext(showingErrorAs: "Favorite Could Not Be Saved")
-        reloadLocalState()
     }
 
     func refreshSelection(force: Bool) async {
@@ -292,7 +319,7 @@ final class AppModel {
             source.lastPlaylistRefresh = .now
             source.lastErrorMessage = nil
             try modelContext.save()
-            reloadLocalState()
+            reloadCoreState()
 
             let epgDue = force || refreshIsDue(lastRefresh: source.lastEPGRefresh, interval: 12 * 60 * 60)
             if epgDue {
@@ -305,7 +332,7 @@ final class AppModel {
                 source.lastErrorMessage = safeMessage(for: error)
                 try? modelContext.save()
             }
-            reloadLocalState()
+            reloadCoreState()
             presentedAlert = AppAlert(title: "Refresh Failed", message: safeMessage(for: error))
         }
     }
@@ -390,7 +417,7 @@ final class AppModel {
             try apply(parsed, to: sourceID)
 
             sidebarSelection = .source(sourceID)
-            reloadLocalState()
+            reloadCoreState()
 
             do {
                 try await refreshEPG(for: sourceID, playlist: parsed)
@@ -400,7 +427,7 @@ final class AppModel {
                     try? modelContext.save()
                 }
             }
-            reloadLocalState()
+            reloadCoreState()
             editingSourceID = nil
             sourceDraft = SourceDraft()
             return true
@@ -433,7 +460,7 @@ final class AppModel {
         first.sortIndex = second.sortIndex
         second.sortIndex = previousIndex
         saveContext(showingErrorAs: "Playlist Order Could Not Be Saved")
-        reloadLocalState()
+        reloadCoreState()
     }
 
     func removeSource(id sourceID: UUID) async {
@@ -442,7 +469,8 @@ final class AppModel {
             try await keychain.removeAll(for: sourceID)
 
             for record in channels where record.sourceID == sourceID { modelContext.delete(record) }
-            for record in programmes where record.sourceID == sourceID { modelContext.delete(record) }
+            let allProgrammes = try programmesStored(for: sourceID)
+            for record in allProgrammes { modelContext.delete(record) }
             for record in recents where record.sourceID == sourceID { modelContext.delete(record) }
             if let source = source(withID: sourceID) { modelContext.delete(source) }
             try modelContext.save()
@@ -470,13 +498,17 @@ final class AppModel {
                 let sourceURL = try await keychain.playlistURL(for: sourceID)
             else { return }
             let parsed = try await parsePlaylist(data, baseURL: sourceURL)
-            try apply(parsed, to: sourceID)
+            if channels.contains(where: { $0.sourceID == sourceID }) {
+                hydrateRuntimePlaylist(parsed, for: sourceID)
+            } else {
+                try apply(parsed, to: sourceID)
+            }
         } catch {
             if let source = source(withID: sourceID) {
                 source.lastErrorMessage = safeMessage(for: error)
                 try? modelContext.save()
             }
-            reloadLocalState()
+            reloadCoreState()
         }
     }
 
@@ -565,17 +597,21 @@ final class AppModel {
             }
         }
 
-        for (stableID, record) in existing where !retainedIDs.contains(stableID) {
+        let removedIDs = Set(existing.keys).subtracting(retainedIDs)
+        let storedProgrammes = removedIDs.isEmpty ? [] : try programmesStored(for: sourceID)
+        for (stableID, record) in existing where removedIDs.contains(stableID) {
             modelContext.delete(record)
             for recent in recents where recent.channelStableID == stableID { modelContext.delete(recent) }
-            for programme in programmes where programme.channelStableID == stableID { modelContext.delete(programme) }
+            for programme in storedProgrammes where programme.channelStableID == stableID {
+                modelContext.delete(programme)
+            }
         }
         try modelContext.save()
-        reloadLocalState()
+        reloadCoreState()
     }
 
     private func apply(_ parsedProgrammes: [ParsedProgramme], to sourceID: UUID) throws {
-        for record in programmes where record.sourceID == sourceID {
+        for record in try programmesStored(for: sourceID) {
             modelContext.delete(record)
         }
 
@@ -602,7 +638,7 @@ final class AppModel {
             }
         }
         try modelContext.save()
-        reloadLocalState()
+        reloadProgrammeState()
     }
 
     private func parsePlaylist(_ data: Data, baseURL: URL) async throws -> ParsedPlaylist {
@@ -623,13 +659,13 @@ final class AppModel {
             modelContext.insert(RecentChannelRecord(channelStableID: channelID, sourceID: channel.sourceID))
         }
         try? modelContext.save()
-        reloadLocalState()
+        reloadRecents()
 
         for stale in recents.dropFirst(20) {
             modelContext.delete(stale)
         }
         try? modelContext.save()
-        reloadLocalState()
+        reloadRecents()
     }
 
     private func observePlaybackForRecents() {
@@ -645,6 +681,11 @@ final class AppModel {
     }
 
     private func reloadLocalState() {
+        reloadCoreState()
+        reloadProgrammeState()
+    }
+
+    private func reloadCoreState() {
         do {
             sources = try modelContext.fetch(FetchDescriptor<PlaylistSourceRecord>())
                 .sorted { $0.sortIndex < $1.sortIndex }
@@ -652,12 +693,62 @@ final class AppModel {
                 .sorted { lhs, rhs in
                     lhs.sourceID == rhs.sourceID ? lhs.sortIndex < rhs.sortIndex : lhs.name < rhs.name
                 }
-            programmes = try modelContext.fetch(FetchDescriptor<ProgrammeRecord>())
-            recents = try modelContext.fetch(FetchDescriptor<RecentChannelRecord>())
-                .sorted { $0.lastPlayedAt > $1.lastPlayedAt }
+            reloadRecents()
         } catch {
             presentedAlert = AppAlert(title: "Library Error", message: "The local channel library could not be read.")
         }
+    }
+
+    private func reloadProgrammeState(at date: Date = .now) {
+        do {
+            // The UI only presents the current and next programme. A six-hour
+            // horizon covers long events while avoiding eager materialization
+            // of the complete 36-hour guide during launch and list updates.
+            let upperBound = date.addingTimeInterval(6 * 60 * 60)
+            let descriptor = FetchDescriptor<ProgrammeRecord>(
+                predicate: #Predicate { programme in
+                    programme.endDate > date && programme.startDate < upperBound
+                },
+                sortBy: [
+                    SortDescriptor(\.channelStableID),
+                    SortDescriptor(\.startDate),
+                ]
+            )
+            programmes = try modelContext.fetch(descriptor)
+            programmeGuideIndex = ProgrammeGuideIndex(programmes: programmes)
+        } catch {
+            presentedAlert = AppAlert(title: "Library Error", message: "The local programme guide could not be read.")
+        }
+    }
+
+    private func reloadRecents() {
+        do {
+            recents = try modelContext.fetch(FetchDescriptor<RecentChannelRecord>())
+                .sorted { $0.lastPlayedAt > $1.lastPlayedAt }
+        } catch {
+            presentedAlert = AppAlert(title: "Library Error", message: "Recently watched channels could not be read.")
+        }
+    }
+
+    private func hydrateRuntimePlaylist(_ playlist: ParsedPlaylist, for sourceID: UUID) {
+        runtimePlaylists[sourceID] = playlist
+        let channelIDs = Set(channels.lazy.filter { $0.sourceID == sourceID }.map(\.stableID))
+        streamURLs = streamURLs.filter { !channelIDs.contains($0.key) }
+
+        for parsed in playlist.channels {
+            let stableID = parsed.stableKey(sourceID: sourceID).rawValue
+            guard channelIDs.contains(stableID), isAllowedMediaURL(parsed.streamURL) else { continue }
+            streamURLs[stableID] = parsed.streamURL
+        }
+    }
+
+    private func programmesStored(for sourceID: UUID) throws -> [ProgrammeRecord] {
+        let descriptor = FetchDescriptor<ProgrammeRecord>(
+            predicate: #Predicate { programme in
+                programme.sourceID == sourceID
+            }
+        )
+        return try modelContext.fetch(descriptor)
     }
 
     private func source(withID id: UUID) -> PlaylistSourceRecord? {

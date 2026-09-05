@@ -3,6 +3,82 @@ import AVKit
 import XCTest
 @testable import ChannelDeck
 
+final class ProgrammeGuideIndexTests: XCTestCase {
+    func testCurrentAndNextLookupsStayWithinOneChannelSchedule() {
+        let sourceID = UUID()
+        let now = Date(timeIntervalSinceReferenceDate: 10_000)
+        let previous = programme(
+            id: "previous",
+            channelID: "channel-a",
+            sourceID: sourceID,
+            start: now.addingTimeInterval(-3_600),
+            end: now.addingTimeInterval(-1_800)
+        )
+        let current = programme(
+            id: "current",
+            channelID: "channel-a",
+            sourceID: sourceID,
+            start: now.addingTimeInterval(-300),
+            end: now.addingTimeInterval(1_500)
+        )
+        let next = programme(
+            id: "next",
+            channelID: "channel-a",
+            sourceID: sourceID,
+            start: current.endDate,
+            end: current.endDate.addingTimeInterval(1_800)
+        )
+        let otherChannel = programme(
+            id: "other",
+            channelID: "channel-b",
+            sourceID: sourceID,
+            start: now.addingTimeInterval(-300),
+            end: now.addingTimeInterval(1_500)
+        )
+
+        let index = ProgrammeGuideIndex(programmes: [next, otherChannel, previous, current])
+
+        XCTAssertEqual(index.current(channelStableID: "channel-a", at: now)?.stableID, "current")
+        XCTAssertEqual(index.next(channelStableID: "channel-a", at: now)?.stableID, "next")
+        XCTAssertEqual(index.current(channelStableID: "channel-b", at: now)?.stableID, "other")
+        XCTAssertNil(index.current(channelStableID: "missing", at: now))
+    }
+
+    func testNextLookupUsesNowWhenNothingIsCurrentlyAiring() {
+        let sourceID = UUID()
+        let now = Date(timeIntervalSinceReferenceDate: 20_000)
+        let upcoming = programme(
+            id: "upcoming",
+            channelID: "channel-a",
+            sourceID: sourceID,
+            start: now.addingTimeInterval(900),
+            end: now.addingTimeInterval(1_800)
+        )
+        let index = ProgrammeGuideIndex(programmes: [upcoming])
+
+        XCTAssertNil(index.current(channelStableID: "channel-a", at: now))
+        XCTAssertEqual(index.next(channelStableID: "channel-a", at: now)?.stableID, "upcoming")
+    }
+
+    private func programme(
+        id: String,
+        channelID: String,
+        sourceID: UUID,
+        start: Date,
+        end: Date
+    ) -> ProgrammeRecord {
+        ProgrammeRecord(
+            stableID: id,
+            sourceID: sourceID,
+            channelStableID: channelID,
+            title: id,
+            programmeDescription: nil,
+            startDate: start,
+            endDate: end
+        )
+    }
+}
+
 final class PlaybackControllerTests: XCTestCase {
     func testLiveDVRStateTracksPositionAndDistanceFromLiveEdge() {
         let state = LiveDVRState.make(

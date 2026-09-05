@@ -5,6 +5,7 @@ struct ChannelBrowserView: View {
 
     var body: some View {
         @Bindable var appModel = appModel
+        let filteredChannels = appModel.filteredChannels
 
         Group {
             if appModel.sources.isEmpty {
@@ -16,10 +17,10 @@ struct ChannelBrowserView: View {
                     Button("Add Playlist") { appModel.beginAddingSource() }
                         .buttonStyle(.borderedProminent)
                 }
-            } else if appModel.filteredChannels.isEmpty {
+            } else if filteredChannels.isEmpty {
                 ContentUnavailableView.search(text: appModel.searchText)
             } else {
-                List(appModel.filteredChannels, id: \.stableID, selection: $appModel.selectedChannelID) { channel in
+                List(filteredChannels, id: \.stableID, selection: $appModel.selectedChannelID) { channel in
                     ChannelRow(channel: channel)
                         .tag(channel.stableID)
                         .contentShape(Rectangle())
@@ -72,6 +73,11 @@ private struct ChannelRow: View {
                     Text(current.title)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                } else if appModel.isLoadingProgrammeGuide {
+                    Text("Loading schedule…")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                         .lineLimit(1)
                 } else {
                     Text("No schedule data")

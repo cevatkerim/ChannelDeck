@@ -29,6 +29,14 @@ struct ChannelLogoView: View {
         .task(id: loadIdentifier) {
             loadedLogo = nil
             guard let url = channel.logoURL else { return }
+            // Avoid starting downloads for rows that only flash through the
+            // viewport during a fast scroll. SwiftUI cancels this task when
+            // the row disappears, before any network or decoding work begins.
+            do {
+                try await Task.sleep(for: .milliseconds(90))
+            } catch {
+                return
+            }
             let image = await ChannelLogoImageCache.shared.image(
                 for: url,
                 maximumPixelSize: maximumPixelSize
@@ -86,7 +94,6 @@ private actor ChannelLogoImageCache {
     private static let failedEntryLifetime: TimeInterval = 5 * 60
 
     private let cache = NSCache<NSString, Entry>()
-    private var inFlight: [String: Task<Entry, Never>] = [:]
 
     init() {
         cache.countLimit = 512
@@ -109,42 +116,43 @@ private actor ChannelLogoImageCache {
             }
             cache.removeObject(forKey: cacheKey)
         }
-        if let existing = inFlight[key] {
-            return await existing.value.image
-        }
 
-        let task = Task.detached(priority: .utility) {
-            do {
-                var request = URLRequest(
-                    url: url,
-                    cachePolicy: .returnCacheDataElseLoad,
-                    timeoutInterval: 15
-                )
-                request.setValue("image/*", forHTTPHeaderField: "Accept")
-                let (data, response) = try await URLSession.shared.data(for: request)
-                guard let http = response as? HTTPURLResponse,
-                      (200 ... 299).contains(http.statusCode),
-                      !data.isEmpty,
-                      data.count <= Self.maximumDownloadBytes,
-                      let decoded = Self.downsample(data, maximumPixelSize: maximumPixelSize) else {
-                    return Entry(image: nil)
-                }
-                return Entry(image: ChannelLogoImage(decoded))
-            } catch {
-                return Entry(image: nil)
+        do {
+            var request = URLRequest(
+                url: url,
+                cachePolicy: .returnCacheDataElseLoad,
+                timeoutInterval: 15
+            )
+            request.setValue("image/*", forHTTPHeaderField: "Accept")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            try Task.checkCancellation()
+            guard let http = response as? HTTPURLResponse,
+                  (200 ... 299).contains(http.statusCode),
+                  !data.isEmpty,
+                  data.count <= Self.maximumDownloadBytes,
+                  let decoded = Self.downsample(data, maximumPixelSize: maximumPixelSize) else {
+                return cache(Entry(image: nil), for: cacheKey)
             }
+            try Task.checkCancellation()
+            return cache(Entry(image: ChannelLogoImage(decoded)), for: cacheKey)
+        } catch is CancellationError {
+            // Cancellation means the row left the viewport; do not poison the
+            // failure cache, because the same logo may be requested later.
+            return nil
+        } catch {
+            return cache(Entry(image: nil), for: cacheKey)
         }
-        inFlight[key] = task
-        let entry = await task.value
-        inFlight[key] = nil
+    }
 
+    @discardableResult
+    private func cache(_ entry: Entry, for key: NSString) -> ChannelLogoImage? {
         let cost: Int
         if let image = entry.image?.cgImage {
             cost = image.bytesPerRow * image.height
         } else {
             cost = 1
         }
-        cache.setObject(entry, forKey: cacheKey, cost: cost)
+        cache.setObject(entry, forKey: key, cost: cost)
         return entry.image
     }
 
