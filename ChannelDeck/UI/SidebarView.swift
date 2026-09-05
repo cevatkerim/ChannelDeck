@@ -34,9 +34,6 @@ struct SidebarView: View {
                         Text(source.displayName)
                             .lineLimit(1)
                         Spacer(minLength: 4)
-                        if appModel.refreshingSourceIDs.contains(source.id) {
-                            ProgressView().controlSize(.mini)
-                        }
                         if let message = source.lastErrorMessage {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.yellow)
@@ -47,6 +44,22 @@ struct SidebarView: View {
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.tertiary)
                             .accessibilityLabel("\(appModel.channelCount(for: source.id)) channels")
+                        if appModel.refreshingSourceIDs.contains(source.id) {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .frame(width: 20, height: 20)
+                                .accessibilityLabel("Refreshing \(source.displayName)")
+                        } else {
+                            Button {
+                                Task { await appModel.refresh(sourceID: source.id, force: true) }
+                            } label: {
+                                Image(systemName: "arrow.clockwise")
+                                    .frame(width: 20, height: 20)
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Refresh \(source.displayName)")
+                            .accessibilityLabel("Refresh playlist \(source.displayName)")
+                        }
                     }
                 }
                 .contextMenu {
@@ -88,17 +101,11 @@ struct SidebarView: View {
             expandCurrentOrFirstSource()
         }
         .toolbar {
-            ToolbarItemGroup {
+            ToolbarItem {
                 Button("Add Playlist", systemImage: "plus") {
                     appModel.beginAddingSource()
                 }
                 .help("Add a playlist")
-
-                Button("Refresh", systemImage: "arrow.clockwise") {
-                    Task { await appModel.refreshSelection(force: true) }
-                }
-                .help("Refresh selected playlist")
-                .disabled(appModel.sourceID(for: appModel.sidebarSelection) == nil)
             }
         }
     }

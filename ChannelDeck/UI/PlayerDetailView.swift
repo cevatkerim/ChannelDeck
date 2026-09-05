@@ -32,13 +32,6 @@ struct PlayerDetailView: View {
                 ?? appModel.selectedRecording?.channelName
                 ?? "Player"
         )
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                AirPlayRoutePicker(player: appModel.playerController.player)
-                    .frame(width: 30, height: 26)
-                    .accessibilityLabel("Choose AirPlay device")
-            }
-        }
     }
 
     @ViewBuilder

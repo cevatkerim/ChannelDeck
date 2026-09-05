@@ -1,3 +1,4 @@
+import AppKit
 import SwiftData
 import SwiftUI
 
@@ -14,6 +15,10 @@ struct ChannelDeckApp: App {
             _appModel = State(initialValue: AppModel(modelContainer: container))
         } catch {
             fatalError("ChannelDeck could not create its local library: \(error.localizedDescription)")
+        }
+
+        if let applicationIcon = NSImage(named: "ChannelDeckMark") {
+            NSApplication.shared.applicationIconImage = applicationIcon
         }
     }
 
