@@ -56,21 +56,54 @@ final class NetworkHTTPClientTests: XCTestCase {
         XCTAssertEqual(result, .notModified(validators))
     }
 
-    func testRejectsNonHTTPSSourceBeforeTransport() async throws {
+    func testAcceptsHTTPSource() async throws {
+        let session = makeSession { request in
+            XCTAssertEqual(request.url?.scheme, "http")
+            return try Self.response(
+                request: request,
+                status: 200,
+                data: Data("#EXTM3U".utf8)
+            )
+        }
+        defer { session.invalidateAndCancel() }
+        let client = HTTPClient(session: session)
+        let url = try XCTUnwrap(
+            URL(string: "http://example.invalid/get.php?username=viewer&password=placeholder&type=m3u_plus")
+        )
+
+        let result = try await client.fetch(url, policy: .playlist)
+
+        guard case let .modified(payload) = result else {
+            XCTFail("Expected a modified payload")
+            return
+        }
+        XCTAssertEqual(payload.data, Data("#EXTM3U".utf8))
+    }
+
+    func testRejectsUnsupportedSourceSchemeBeforeTransport() async throws {
         let session = makeSession { request in
             XCTFail("Transport should not receive a request")
             return try Self.response(request: request, status: 200)
         }
         defer { session.invalidateAndCancel() }
         let client = HTTPClient(session: session)
-        let url = try XCTUnwrap(URL(string: "http://example.invalid/private/list.m3u"))
+        let url = try XCTUnwrap(URL(string: "ftp://example.invalid/private/list.m3u"))
 
         do {
             _ = try await client.fetch(url, policy: .playlist)
-            XCTFail("Expected insecure transport to be rejected")
+            XCTFail("Expected unsupported transport to be rejected")
         } catch {
-            XCTAssertEqual(error as? HTTPClientError, .insecureTransport)
+            XCTAssertEqual(error as? HTTPClientError, .unsupportedScheme)
         }
+    }
+
+    func testSourceURLPolicyAcceptsHTTPAndHTTPSOnly() {
+        XCTAssertNotNil(SourceURLPolicy.validatedURL(from: " http://example.invalid/list.m3u "))
+        XCTAssertNotNil(SourceURLPolicy.validatedURL(from: "https://example.invalid/list.m3u"))
+        XCTAssertNil(SourceURLPolicy.validatedURL(from: "ftp://example.invalid/list.m3u"))
+        XCTAssertNil(SourceURLPolicy.validatedURL(from: "https:///missing-host.m3u"))
+        XCTAssertTrue(SourceURLPolicy.usesUnencryptedTransport("http://example.invalid/list.m3u"))
+        XCTAssertFalse(SourceURLPolicy.usesUnencryptedTransport("https://example.invalid/list.m3u"))
     }
 
     func testValidatesStatusAndRedactsCredentialBearingURL() async throws {

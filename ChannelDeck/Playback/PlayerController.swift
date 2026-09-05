@@ -208,8 +208,18 @@ public final class PlayerController {
 
     /// Replaces the current channel immediately. The URL is retained privately
     /// only so `retry()` can recreate a failed item.
-    public func play(url: URL, channelName: String) {
-        beginPlayback(PlaybackRequest(url: url, channelName: channelName))
+    public func play(
+        url: URL,
+        channelName: String,
+        allowsExternalPlayback: Bool = true
+    ) {
+        beginPlayback(
+            PlaybackRequest(
+                url: url,
+                channelName: channelName,
+                allowsExternalPlayback: allowsExternalPlayback
+            )
+        )
     }
 
     public func pause() {
@@ -278,6 +288,7 @@ public final class PlayerController {
         removeItemObservers()
         player.pause()
         player.replaceCurrentItem(with: nil)
+        player.allowsExternalPlayback = true
         currentRequest = nil
         currentChannelName = nil
         isExternalPlaybackActive = false
@@ -297,6 +308,7 @@ public final class PlayerController {
 
         currentRequest = request
         currentChannelName = request.channelName
+        player.allowsExternalPlayback = request.allowsExternalPlayback
         currentStreamUsesInsecureTransport = request.url.scheme?.lowercased() == "http"
         liveDVRState = .unavailable
         userPaused = false
@@ -473,4 +485,5 @@ public final class PlayerController {
 private struct PlaybackRequest {
     let url: URL
     let channelName: String
+    let allowsExternalPlayback: Bool
 }

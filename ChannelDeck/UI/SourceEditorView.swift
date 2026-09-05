@@ -25,6 +25,16 @@ struct SourceEditorView: View {
             }
             .formStyle(.grouped)
 
+            if appModel.sourceDraftUsesUnencryptedTransport {
+                Label(
+                    "This source uses unencrypted HTTP. Credentials and playlist data may be visible on the network.",
+                    systemImage: "exclamationmark.shield.fill"
+                )
+                .font(.callout)
+                .foregroundStyle(.orange)
+                .accessibilityLabel("Warning: This source uses unencrypted HTTP.")
+            }
+
             if let error = appModel.sourceEditorError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .font(.callout)
@@ -47,13 +57,14 @@ struct SourceEditorView: View {
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(!appModel.canCommitSourceDraft || appModel.isSavingSource)
+                .help(appModel.canCommitSourceDraft ? "Validate and add this playlist" : "Enter a valid HTTP or HTTPS playlist URL")
                 .overlay {
                     if appModel.isSavingSource { ProgressView().controlSize(.small) }
                 }
             }
         }
         .padding(24)
-        .frame(width: 520, height: 390)
+        .frame(width: 520, height: 430)
         .interactiveDismissDisabled(appModel.isSavingSource)
     }
 }

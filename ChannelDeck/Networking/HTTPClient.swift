@@ -30,7 +30,7 @@ enum HTTPFetchResult: Equatable, Sendable {
 
 enum HTTPClientError: Error, Equatable, LocalizedError {
     case invalidURL
-    case insecureTransport
+    case unsupportedScheme
     case invalidResponse
     case unacceptableStatus(Int)
     case responseTooLarge
@@ -41,8 +41,8 @@ enum HTTPClientError: Error, Equatable, LocalizedError {
         switch self {
         case .invalidURL:
             "The source address is invalid."
-        case .insecureTransport:
-            "Playlist and programme-guide sources must use HTTPS."
+        case .unsupportedScheme:
+            "Playlist and programme-guide sources must use HTTP or HTTPS."
         case .invalidResponse:
             "The server returned an invalid response."
         case let .unacceptableStatus(status):
@@ -58,13 +58,22 @@ enum HTTPClientError: Error, Equatable, LocalizedError {
 }
 
 /// Fetches sensitive source documents without ever including their URLs in an
-/// exposed error. `URLSession.data(for:)` participates in structured task
-/// cancellation; a superseded repository refresh can simply cancel its task.
+/// exposed error. Both transports participate in structured task cancellation,
+/// so a superseded repository refresh can simply cancel its task.
 actor HTTPClient {
-    private let session: URLSession
+    /// URLSession remains injectable for deterministic unit tests. Production
+    /// requests use the AsyncHTTPClient transport shared with the media relay,
+    /// which supports user-configured HTTP sources without an app-wide ATS
+    /// exception.
+    private let session: URLSession?
     private let timeout: TimeInterval
 
-    init(session: URLSession = .shared, timeout: TimeInterval = 30) {
+    init(timeout: TimeInterval = 30) {
+        self.session = nil
+        self.timeout = timeout
+    }
+
+    init(session: URLSession, timeout: TimeInterval = 30) {
         self.session = session
         self.timeout = timeout
     }
@@ -74,17 +83,36 @@ actor HTTPClient {
         validators: HTTPValidators? = nil,
         policy: HTTPResourcePolicy
     ) async throws -> HTTPFetchResult {
-        guard
-            url.scheme?.lowercased() == "https",
-            let host = url.host,
-            !host.isEmpty
-        else {
-            if url.scheme?.lowercased() == "http" {
-                throw HTTPClientError.insecureTransport
-            }
+        guard let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            throw HTTPClientError.unsupportedScheme
+        }
+        guard let host = url.host, !host.isEmpty else {
             throw HTTPClientError.invalidURL
         }
 
+        if let session {
+            return try await fetchUsingURLSession(
+                url,
+                validators: validators,
+                policy: policy,
+                session: session
+            )
+        }
+
+        return try await fetchUsingAsyncHTTPClient(
+            url,
+            validators: validators,
+            policy: policy
+        )
+    }
+
+    private func fetchUsingURLSession(
+        _ url: URL,
+        validators: HTTPValidators?,
+        policy: HTTPResourcePolicy,
+        session: URLSession
+    ) async throws -> HTTPFetchResult {
         var request = URLRequest(
             url: url,
             cachePolicy: .reloadIgnoringLocalCacheData,
@@ -139,6 +167,65 @@ actor HTTPClient {
             }
             throw HTTPClientError.transportFailure(error.code)
         } catch {
+            throw HTTPClientError.unexpectedTransportFailure
+        }
+    }
+
+    private func fetchUsingAsyncHTTPClient(
+        _ url: URL,
+        validators: HTTPValidators?,
+        policy: HTTPResourcePolicy
+    ) async throws -> HTTPFetchResult {
+        do {
+            try Task.checkCancellation()
+            let response = try await AsyncHTTPClientHLSRelayUpstreamFetcher(
+                timeout: timeout,
+                maximumBodyBytes: policy.maximumResponseBytes
+            ).fetch(
+                HLSRelayUpstreamRequest(
+                    url: url,
+                    ifNoneMatch: safeHeaderValue(validators?.etag),
+                    ifModifiedSince: safeHeaderValue(validators?.lastModified)
+                )
+            )
+            try Task.checkCancellation()
+
+            let responseValidators = HTTPValidators(
+                etag: safeHeaderValue(response.etag) ?? validators?.etag,
+                lastModified: safeHeaderValue(response.lastModified) ?? validators?.lastModified
+            )
+            if response.statusCode == 304 {
+                return .notModified(responseValidators)
+            }
+            guard (200 ... 299).contains(response.statusCode) else {
+                throw HTTPClientError.unacceptableStatus(response.statusCode)
+            }
+            if let contentLength = response.contentLength,
+               contentLength > Int64(policy.maximumResponseBytes) {
+                throw HTTPClientError.responseTooLarge
+            }
+            guard response.body.count <= policy.maximumResponseBytes else {
+                throw HTTPClientError.responseTooLarge
+            }
+
+            return .modified(
+                HTTPPayload(
+                    data: response.body,
+                    validators: responseValidators,
+                    contentType: safeHeaderValue(response.contentType)
+                )
+            )
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as HTTPClientError {
+            throw error
+        } catch HLSRelayError.responseTooLarge {
+            throw HTTPClientError.responseTooLarge
+        } catch where Task.isCancelled {
+            throw CancellationError()
+        } catch {
+            // Relay transport failures are intentionally collapsed because
+            // lower-level errors may contain credential-bearing source URLs.
             throw HTTPClientError.unexpectedTransportFailure
         }
     }

@@ -103,12 +103,69 @@ final class RecentChannelRecord {
     }
 }
 
+@Model
+final class RecordingRecord {
+    @Attribute(.unique) var id: UUID
+    var channelStableID: String
+    var sourceID: UUID
+    var channelName: String
+    var groupName: String
+    var logoURLString: String?
+    var programmeTitle: String?
+    var programmeDescription: String?
+    var programmeStartDate: Date?
+    var programmeEndDate: Date?
+    var startedAt: Date
+    var endedAt: Date
+    var duration: TimeInterval
+    var packageName: String
+    var thumbnailFileName: String?
+    var qualityRawValue: String?
+
+    init(
+        id: UUID,
+        channelStableID: String,
+        sourceID: UUID,
+        channelName: String,
+        groupName: String,
+        logoURLString: String?,
+        programmeTitle: String?,
+        programmeDescription: String?,
+        programmeStartDate: Date?,
+        programmeEndDate: Date?,
+        startedAt: Date,
+        endedAt: Date,
+        duration: TimeInterval,
+        packageName: String,
+        thumbnailFileName: String?,
+        qualityRawValue: String? = nil
+    ) {
+        self.id = id
+        self.channelStableID = channelStableID
+        self.sourceID = sourceID
+        self.channelName = channelName
+        self.groupName = groupName
+        self.logoURLString = logoURLString
+        self.programmeTitle = programmeTitle
+        self.programmeDescription = programmeDescription
+        self.programmeStartDate = programmeStartDate
+        self.programmeEndDate = programmeEndDate
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.duration = duration
+        self.packageName = packageName
+        self.thumbnailFileName = thumbnailFileName
+        self.qualityRawValue = qualityRawValue
+    }
+}
+
 enum ChannelDeckSchema {
     static let schema = Schema([
         PlaylistSourceRecord.self,
         ChannelRecord.self,
         ProgrammeRecord.self,
-        RecentChannelRecord.self
+        RecentChannelRecord.self,
+        RecordingRecord.self
     ])
 
     static func makeContainer(inMemory: Bool = false) throws -> ModelContainer {

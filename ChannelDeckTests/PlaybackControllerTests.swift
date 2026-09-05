@@ -188,6 +188,22 @@ final class PlaybackControllerTests: XCTestCase {
         XCTAssertEqual(controller.airPlayVideoCompatibility, .unavailable)
         XCTAssertFalse(controller.currentStreamUsesInsecureTransport)
         XCTAssertNil(controller.airPlayWarningMessage)
+        XCTAssertTrue(controller.player.allowsExternalPlayback)
+    }
+
+    @MainActor
+    func testLocalRecordingPlaybackDisablesExternalHandoff() {
+        let controller = PlayerController()
+
+        controller.play(
+            url: URL(fileURLWithPath: "/private/tmp/recording.ts"),
+            channelName: "Saved Programme",
+            allowsExternalPlayback: false
+        )
+
+        XCTAssertFalse(controller.player.allowsExternalPlayback)
+        controller.retry()
+        XCTAssertFalse(controller.player.allowsExternalPlayback)
     }
 
     func testFailureMessagesDoNotIncludeUnderlyingErrorDetails() {

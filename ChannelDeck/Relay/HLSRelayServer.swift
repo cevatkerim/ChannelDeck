@@ -148,6 +148,22 @@ actor HLSRelayServer {
         return try await sessionCoordinator.prepare(sourceURL: sourceURL, relayOrigin: origin)
     }
 
+    func beginRecording(
+        id: UUID,
+        packageDirectory: URL,
+        quality: BufferRecordingQuality
+    ) async throws -> TimeInterval {
+        try await sessionCoordinator.beginRecording(
+            id: id,
+            packageDirectory: packageDirectory,
+            quality: quality
+        )
+    }
+
+    func finishRecording() async throws -> FFmpegLiveRecordingArtifact? {
+        try await sessionCoordinator.finishRecording()
+    }
+
     func stop() async {
         await sessionCoordinator.stop()
         for connection in connections.values {
@@ -329,6 +345,26 @@ actor HLSRelaySessionCoordinator {
             await audioTranscoder.stop()
         }
         await core.invalidateAllSessions()
+    }
+
+    func beginRecording(
+        id: UUID,
+        packageDirectory: URL,
+        quality: BufferRecordingQuality
+    ) async throws -> TimeInterval {
+        guard let audioTranscoder else {
+            throw FFmpegLiveRecordingError.noActiveStream
+        }
+        return try await audioTranscoder.beginRecording(
+            id: id,
+            packageDirectory: packageDirectory,
+            quality: quality
+        )
+    }
+
+    func finishRecording() async throws -> FFmpegLiveRecordingArtifact? {
+        guard let audioTranscoder else { return nil }
+        return try await audioTranscoder.finishRecording()
     }
 
     private func prepareWithoutTimeout(

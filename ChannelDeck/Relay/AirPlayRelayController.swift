@@ -319,6 +319,26 @@ final class AirPlayRelayController {
         }
     }
 
+    func beginBufferRecording(
+        id: UUID,
+        packageDirectory: URL,
+        quality: BufferRecordingQuality
+    ) async throws -> TimeInterval {
+        guard phase == .ready, playbackIsRelayed, let relayServer else {
+            throw FFmpegLiveRecordingError.noActiveStream
+        }
+        return try await relayServer.beginRecording(
+            id: id,
+            packageDirectory: packageDirectory,
+            quality: quality
+        )
+    }
+
+    func finishBufferRecording() async throws -> FFmpegLiveRecordingArtifact? {
+        guard let relayServer else { return nil }
+        return try await relayServer.finishRecording()
+    }
+
     func refreshLANAddress() {
         do {
             detectedLANAddress = try addressResolver.privateIPv4Address()

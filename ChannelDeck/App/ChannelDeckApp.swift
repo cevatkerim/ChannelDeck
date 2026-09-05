@@ -59,13 +59,13 @@ private struct ChannelDeckCommands: Commands {
                 appModel.playerController.togglePlayback()
             }
             .keyboardShortcut(.space, modifiers: [])
-            .disabled(appModel.selectedChannel == nil)
+            .disabled(appModel.selectedChannel == nil && appModel.selectedRecording == nil)
 
             Button("Try Channel Again") {
                 appModel.playerController.retry()
             }
             .keyboardShortcut("r", modifiers: [.command, .option])
-            .disabled(appModel.selectedChannel == nil)
+            .disabled(appModel.selectedChannel == nil && appModel.selectedRecording == nil)
 
             Divider()
 
@@ -73,7 +73,7 @@ private struct ChannelDeckCommands: Commands {
                 appModel.playerController.stop()
             }
             .keyboardShortcut(".", modifiers: [.command])
-            .disabled(appModel.selectedChannel == nil)
+            .disabled(appModel.selectedChannel == nil && appModel.selectedRecording == nil)
         }
     }
 }

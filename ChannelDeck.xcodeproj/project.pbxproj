@@ -17,6 +17,7 @@
 		1A503F154E67C9594D5204DF /* LiveRelayProvisioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FEF7A5A8A19EC5CBA55AC4 /* LiveRelayProvisioningTests.swift */; };
 		1C422D0E7C8AA209FB334595 /* AirPlayRelayPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D9F3B15F6AA3FE602FBC2 /* AirPlayRelayPreferences.swift */; };
 		1FBE45019B08BE021AD0E2E3 /* RelayHLSPlaylistRewriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8BB70A87359A7542B2D87BA /* RelayHLSPlaylistRewriterTests.swift */; };
+		210C149E82CA1EEA66E4ABBB /* RecordingStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC737C02B4795BD33AFDCD5C /* RecordingStorageTests.swift */; };
 		253D3A6C2D4E76921450F49C /* HLSPlaylistRewriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D9CFBE668406250E38311FB /* HLSPlaylistRewriter.swift */; };
 		2893AA7F79BC8055669115C2 /* ParserXMLTVParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */; };
 		2FB1A7A50BF41F78496C0E55 /* HLSRelayCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F18F9B280CB4CB404137412E /* HLSRelayCore.swift */; };
@@ -54,6 +55,7 @@
 		AE11F7984D281525BAD34E21 /* AcmeSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 62D7DADD1E08A868DD4D0394 /* AcmeSwift */; };
 		B6F8EB69C5D712BBF7F472AF /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 326A488F53FB20FE43F551D7 /* X509 */; };
 		BD1DC69934DF4866DDD27D41 /* ACMEModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE790D3A65087536D8788C1D /* ACMEModels.swift */; };
+		BF036D05F83492BD27308B4B /* RecordingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D85AA48ACDBE13DA799B5FD /* RecordingSupport.swift */; };
 		BF0C1FD82115C3FC573D03D0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5DBC4C4ECF5A5D9870B6F85C /* Assets.xcassets */; };
 		C0F34BCD8C3AC17D297C8888 /* ACMEProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34FB43226895A545D95DA33 /* ACMEProtocols.swift */; };
 		C19C0B10CD7D50D6FA79B062 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF00699FCD0549D463896696 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift */; };
@@ -119,6 +121,7 @@
 		53C6A8606B1B78303E487258 /* RelayLANAddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayLANAddressResolverTests.swift; sourceTree = "<group>"; };
 		5A57CED1F1A1E57EB85D9F5D /* SecurityKeychainAbstractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecurityKeychainAbstractionTests.swift; sourceTree = "<group>"; };
 		5BFE589E506EB4B165954003 /* RelayPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayPreferencesTests.swift; sourceTree = "<group>"; };
+		5D85AA48ACDBE13DA799B5FD /* RecordingSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingSupport.swift; sourceTree = "<group>"; };
 		5DBC4C4ECF5A5D9870B6F85C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserXMLTVParserTests.swift; sourceTree = "<group>"; };
 		6207941AF73A5656CA8D0E75 /* FFmpegHLSAudioTranscoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFmpegHLSAudioTranscoder.swift; sourceTree = "<group>"; };
@@ -149,6 +152,7 @@
 		CA9D9F3B15F6AA3FE602FBC2 /* AirPlayRelayPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayRelayPreferences.swift; sourceTree = "<group>"; };
 		D22AF6B8B767BF81F5926DA0 /* M3UParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = M3UParser.swift; sourceTree = "<group>"; };
 		D981749A51E11BF9372334CB /* SourceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceEditorView.swift; sourceTree = "<group>"; };
+		DC737C02B4795BD33AFDCD5C /* RecordingStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStorageTests.swift; sourceTree = "<group>"; };
 		DC9F662E4E644905B8BB20EF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E34FB43226895A545D95DA33 /* ACMEProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEProtocols.swift; sourceTree = "<group>"; };
 		E3D62F10A740D269C32C0070 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -208,6 +212,7 @@
 				26960B6BBA424F04C03BB05E /* ParserM3UParserTests.swift */,
 				5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */,
 				CA6C40FD24DD492AB750CE50 /* PlaybackControllerTests.swift */,
+				DC737C02B4795BD33AFDCD5C /* RecordingStorageTests.swift */,
 				0F2E482BB00B219FFFC1FA8F /* RelayFFmpegHLSAudioTranscoderTests.swift */,
 				1069D4763D27898343A3981B /* RelayHLSAcceptEncodingTests.swift */,
 				95F62ADD78C4C79F37B1568C /* RelayHLSCoreTests.swift */,
@@ -244,6 +249,7 @@
 				0E0C0FDA2C62F96BE818AEAF /* Networking */,
 				C47A6D90F9FDF172F2F919CA /* Persistence */,
 				A3F7175B10E391961605146A /* Playback */,
+				E4C1AF5508B6945A23FDB73C /* Recording */,
 				93B76A7239D2A066093ED4CC /* Relay */,
 				2178FA8B59D3AE09DAB7B42F /* Resources */,
 				68CA62725ECAF0D7B19B13C5 /* Security */,
@@ -321,6 +327,14 @@
 				92208841B175E0A3CFB1C8A6 /* PersistenceModels.swift */,
 			);
 			path = Persistence;
+			sourceTree = "<group>";
+		};
+		E4C1AF5508B6945A23FDB73C /* Recording */ = {
+			isa = PBXGroup;
+			children = (
+				5D85AA48ACDBE13DA799B5FD /* RecordingSupport.swift */,
+			);
+			path = Recording;
 			sourceTree = "<group>";
 		};
 		EEE17411C57B52B3237E8868 /* Services */ = {
@@ -499,6 +513,7 @@
 				0130765783266356F90D2052 /* PlayerController.swift in Sources */,
 				E4D98BB34D7717555BD17DBF /* PlayerDetailView.swift in Sources */,
 				F362DCA24D1C5B2E3CD72640 /* PlayerViewRepresentable.swift in Sources */,
+				BF036D05F83492BD27308B4B /* RecordingSupport.swift in Sources */,
 				4898D1C1791BD09DC1BEC345 /* SettingsView.swift in Sources */,
 				A9CC7C25A63E5AF6A82DE6FC /* SidebarView.swift in Sources */,
 				80DDBCEC780EE7AF795D1629 /* SourceEditorView.swift in Sources */,
@@ -524,6 +539,7 @@
 				80E50792B4111C204C90A39A /* ParserM3UParserTests.swift in Sources */,
 				2893AA7F79BC8055669115C2 /* ParserXMLTVParserTests.swift in Sources */,
 				357ACC284FE6A15639BC34C0 /* PlaybackControllerTests.swift in Sources */,
+				210C149E82CA1EEA66E4ABBB /* RecordingStorageTests.swift in Sources */,
 				72E91A9066F06330EE2907D0 /* RelayFFmpegHLSAudioTranscoderTests.swift in Sources */,
 				C9BA68464B77BDB740AE60FB /* RelayHLSAcceptEncodingTests.swift in Sources */,
 				616C409B1D5CF695A392A2D9 /* RelayHLSCoreTests.swift in Sources */,

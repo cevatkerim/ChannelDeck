@@ -32,6 +32,15 @@ struct ContentView: View {
                     },
                     secondaryButton: .cancel()
                 )
+            } else if let recordingID = alert.recordingID {
+                Alert(
+                    title: Text(alert.title),
+                    message: Text(alert.message),
+                    primaryButton: .destructive(Text("Delete")) {
+                        appModel.removeRecording(id: recordingID)
+                    },
+                    secondaryButton: .cancel()
+                )
             } else {
                 Alert(title: Text(alert.title), message: Text(alert.message), dismissButton: .default(Text("OK")))
             }

@@ -13,6 +13,9 @@ struct SidebarView: View {
                     .accessibilityLabel("Favorite channels")
                 Label("Recently Watched", systemImage: "clock.arrow.circlepath")
                     .tag(SidebarSelection.recents)
+                Label("Recordings", systemImage: "record.circle")
+                    .tag(SidebarSelection.recordings)
+                    .accessibilityLabel("Saved recordings")
             }
 
             ForEach(appModel.sources, id: \.id) { source in

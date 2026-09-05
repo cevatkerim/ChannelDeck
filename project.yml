@@ -46,9 +46,6 @@ targets:
         NSLocalNetworkUsageDescription: ChannelDeck securely relays live video from this Mac to AirPlay receivers on your local network.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoadsForMedia: true
-          NSExceptionDomains:
-            vandijk.tvfor.pro:
-              NSExceptionAllowsInsecureHTTPLoads: true
     entitlements:
       path: ChannelDeck/Resources/ChannelDeck.entitlements
     dependencies:

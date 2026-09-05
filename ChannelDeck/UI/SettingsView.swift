@@ -5,6 +5,7 @@ struct SettingsView: View {
     @State private var isConfirmingReset = false
 
     var body: some View {
+        @Bindable var model = appModel
         @Bindable var relay = appModel.airPlayRelayController
 
         Form {
@@ -127,6 +128,24 @@ struct SettingsView: View {
                 }
             } footer: {
                 Text("The Mac must remain awake, running ChannelDeck, and connected to the same LAN as the AirPlay receiver during playback.")
+            }
+
+            Section("Recordings") {
+                Picker("Default quality", selection: $model.bufferRecordingQuality) {
+                    ForEach(BufferRecordingQuality.allCases) { quality in
+                        Label(quality.title, systemImage: quality.systemImage)
+                            .tag(quality)
+                    }
+                }
+                .disabled(model.bufferRecordingPhase.isEnabled)
+
+                Text(model.bufferRecordingQuality.guidance)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("Original Video maintains a second five-minute rolling rendition while a relayed channel is playing, but still uses only one provider connection.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Refresh") {

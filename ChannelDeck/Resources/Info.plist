@@ -22,14 +22,6 @@
 	<dict>
 		<key>NSAllowsArbitraryLoadsForMedia</key>
 		<true/>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>vandijk.tvfor.pro</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-			</dict>
-		</dict>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>ChannelDeck securely relays live video from this Mac to AirPlay receivers on your local network.</string>

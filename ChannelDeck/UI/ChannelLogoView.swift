@@ -3,10 +3,23 @@ import ImageIO
 import SwiftUI
 
 struct ChannelLogoView: View {
-    let channel: ChannelRecord
+    private let name: String
+    private let logoURL: URL?
     var size: CGFloat = 44
 
     @State private var loadedLogo: ChannelLogoImage?
+
+    init(channel: ChannelRecord, size: CGFloat = 44) {
+        name = channel.name
+        logoURL = channel.logoURL
+        self.size = size
+    }
+
+    init(name: String, logoURLString: String?, size: CGFloat = 44) {
+        self.name = name
+        logoURL = logoURLString.flatMap(URL.init(string:))
+        self.size = size
+    }
 
     var body: some View {
         Group {
@@ -28,7 +41,7 @@ struct ChannelLogoView: View {
         .accessibilityHidden(true)
         .task(id: loadIdentifier) {
             loadedLogo = nil
-            guard let url = channel.logoURL else { return }
+            guard let url = logoURL else { return }
             // Avoid starting downloads for rows that only flash through the
             // viewport during a fast scroll. SwiftUI cancels this task when
             // the row disappears, before any network or decoding work begins.
@@ -54,11 +67,11 @@ struct ChannelLogoView: View {
     }
 
     private var loadIdentifier: String {
-        "\(channel.logoURL?.absoluteString ?? "fallback")#\(maximumPixelSize)"
+        "\(logoURL?.absoluteString ?? "fallback")#\(maximumPixelSize)"
     }
 
     private var fallback: some View {
-        Text(channel.name.prefix(2).uppercased())
+        Text(name.prefix(2).uppercased())
             .font(.system(size: size * 0.27, weight: .semibold, design: .rounded))
             .foregroundStyle(.secondary)
     }
@@ -67,7 +80,7 @@ struct ChannelLogoView: View {
 /// A decoded thumbnail that may safely move from the cache actor to SwiftUI.
 /// CGImage is immutable; the unchecked annotation only bridges older SDK
 /// concurrency annotations that do not express that property.
-private final class ChannelLogoImage: @unchecked Sendable {
+final class ChannelLogoImage: @unchecked Sendable {
     let cgImage: CGImage
 
     init(_ cgImage: CGImage) {
@@ -77,7 +90,7 @@ private final class ChannelLogoImage: @unchecked Sendable {
 
 /// Shares downloads and decoded thumbnails across recycled List rows. NSCache
 /// applies a strict memory/count bound and can discard entries under pressure.
-private actor ChannelLogoImageCache {
+actor ChannelLogoImageCache {
     static let shared = ChannelLogoImageCache()
 
     private final class Entry: @unchecked Sendable {
@@ -144,6 +157,22 @@ private actor ChannelLogoImageCache {
         }
     }
 
+    func image(forLocalFile url: URL, maximumPixelSize: Int) -> ChannelLogoImage? {
+        guard url.isFileURL, (16 ... 1_280).contains(maximumPixelSize) else { return nil }
+        let cacheKey = "local:\(url.path)#\(maximumPixelSize)" as NSString
+        if let cached = cache.object(forKey: cacheKey) {
+            return cached.image
+        }
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
+              values.isRegularFile == true,
+              let size = values.fileSize,
+              (1 ... 8 * 1_024 * 1_024).contains(size),
+              let image = Self.downsample(url, maximumPixelSize: maximumPixelSize) else {
+            return cache(Entry(image: nil), for: cacheKey)
+        }
+        return cache(Entry(image: ChannelLogoImage(image)), for: cacheKey)
+    }
+
     @discardableResult
     private func cache(_ entry: Entry, for key: NSString) -> ChannelLogoImage? {
         let cost: Int
@@ -163,6 +192,20 @@ private actor ChannelLogoImageCache {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             return nil
         }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    private nonisolated static func downsample(
+        _ url: URL,
+        maximumPixelSize: Int
+    ) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,

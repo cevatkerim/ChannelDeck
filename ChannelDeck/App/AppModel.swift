@@ -1,3 +1,4 @@
+import AppKit
 import CryptoKit
 import Foundation
 import Observation
@@ -6,8 +7,31 @@ import SwiftData
 enum SidebarSelection: Hashable {
     case favorites
     case recents
+    case recordings
     case source(UUID)
     case group(UUID, String)
+}
+
+enum BufferRecordingPhase: Equatable, Sendable {
+    case idle
+    case starting
+    case recording(startedAt: Date)
+    case finalizing
+    case failed(String)
+
+    var isEnabled: Bool {
+        switch self {
+        case .starting, .recording, .finalizing: true
+        case .idle, .failed: false
+        }
+    }
+
+    var isBusy: Bool {
+        switch self {
+        case .starting, .finalizing: true
+        default: false
+        }
+    }
 }
 
 struct SourceDraft: Equatable {
@@ -16,16 +40,38 @@ struct SourceDraft: Equatable {
     var epgURL = ""
 }
 
+enum SourceURLPolicy {
+    static func validatedURL(from value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              url.host?.isEmpty == false else { return nil }
+        return url
+    }
+
+    static func usesUnencryptedTransport(_ value: String) -> Bool {
+        validatedURL(from: value)?.scheme?.lowercased() == "http"
+    }
+}
+
 struct AppAlert: Identifiable, Equatable {
     let id = UUID()
     let title: String
     let message: String
     let sourceID: UUID?
+    let recordingID: UUID?
 
-    init(title: String, message: String, sourceID: UUID? = nil) {
+    init(
+        title: String,
+        message: String,
+        sourceID: UUID? = nil,
+        recordingID: UUID? = nil
+    ) {
         self.title = title
         self.message = message
         self.sourceID = sourceID
+        self.recordingID = recordingID
     }
 }
 
@@ -57,6 +103,21 @@ struct ProgrammeGuideIndex {
 @MainActor
 @Observable
 final class AppModel {
+    private struct PendingRecordingMetadata {
+        let id: UUID
+        let channelStableID: String
+        let sourceID: UUID
+        let channelName: String
+        let groupName: String
+        let logoURLString: String?
+        let programmeTitle: String?
+        let programmeDescription: String?
+        let programmeStartDate: Date?
+        let programmeEndDate: Date?
+        let packageName: String
+        let quality: BufferRecordingQuality
+    }
+
     let playerController: PlayerController
     let airPlayRelayController: AirPlayRelayController
 
@@ -64,9 +125,11 @@ final class AppModel {
     var channels: [ChannelRecord] = []
     var programmes: [ProgrammeRecord] = []
     var recents: [RecentChannelRecord] = []
+    var recordings: [RecordingRecord] = []
 
     var sidebarSelection: SidebarSelection? = .favorites
     var selectedChannelID: String?
+    var selectedRecordingID: UUID?
     var searchText = ""
     var refreshingSourceIDs: Set<UUID> = []
     var isLoadingProgrammeGuide = false
@@ -76,11 +139,21 @@ final class AppModel {
     var sourceDraft = SourceDraft()
     var sourceEditorError: String?
     var presentedAlert: AppAlert?
+    var bufferRecordingPhase: BufferRecordingPhase = .idle
+    var bufferRecordingQuality: BufferRecordingQuality = .savedDefault {
+        didSet {
+            UserDefaults.standard.set(
+                bufferRecordingQuality.rawValue,
+                forKey: BufferRecordingQuality.defaultsKey
+            )
+        }
+    }
 
     @ObservationIgnored private let modelContext: ModelContext
     @ObservationIgnored private let keychain: any KeychainStoring
     @ObservationIgnored private let encryptedCache: EncryptedPlaylistCache
     @ObservationIgnored private let httpClient: HTTPClient
+    @ObservationIgnored private let recordingStorage: RecordingStorage?
     @ObservationIgnored private let m3uParser = M3UParser()
     @ObservationIgnored private let xmlTVParser = XMLTVParser()
     @ObservationIgnored private var runtimePlaylists: [UUID: ParsedPlaylist] = [:]
@@ -89,6 +162,9 @@ final class AppModel {
     @ObservationIgnored private var pendingRecentChannelID: String?
     @ObservationIgnored private var didBootstrap = false
     @ObservationIgnored private var playbackPreparationTask: Task<Void, Never>?
+    @ObservationIgnored private var bufferRecordingTask: Task<Void, Never>?
+    @ObservationIgnored private var recordingFinalizationTask: Task<Void, Never>?
+    @ObservationIgnored private var activeRecordingMetadata: PendingRecordingMetadata?
     private var programmeGuideIndex = ProgrammeGuideIndex()
 
     init(
@@ -104,6 +180,7 @@ final class AppModel {
         self.airPlayRelayController = AirPlayRelayController(keychain: resolvedKeychain)
         self.encryptedCache = EncryptedPlaylistCache(keyStore: resolvedKeychain)
         self.httpClient = httpClient
+        self.recordingStorage = try? RecordingStorage()
         // Channels are enough to draw the first frame. Loading thousands of
         // guide rows here made App.init block and produced a beachball.
         reloadCoreState()
@@ -116,6 +193,11 @@ final class AppModel {
         return channel(withID: selectedChannelID)
     }
 
+    var selectedRecording: RecordingRecord? {
+        guard let selectedRecordingID else { return nil }
+        return recordings.first { $0.id == selectedRecordingID }
+    }
+
     var filteredChannels: [ChannelRecord] {
         let base: [ChannelRecord]
         switch sidebarSelection {
@@ -126,6 +208,8 @@ final class AppModel {
             base = channels
                 .filter { positions[$0.stableID] != nil }
                 .sorted { (positions[$0.stableID] ?? .max) < (positions[$1.stableID] ?? .max) }
+        case .recordings:
+            base = []
         case .source(let sourceID):
             base = channels.filter { $0.sourceID == sourceID }
         case .group(let sourceID, let group):
@@ -144,10 +228,22 @@ final class AppModel {
         }
     }
 
+    var filteredRecordings: [RecordingRecord] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return recordings }
+        return recordings.filter { recording in
+            recording.channelName.localizedStandardContains(query)
+                || recording.groupName.localizedStandardContains(query)
+                || recording.programmeTitle?.localizedStandardContains(query) == true
+                || recording.programmeDescription?.localizedStandardContains(query) == true
+        }
+    }
+
     var browserTitle: String {
         switch sidebarSelection {
         case .favorites: "Favorites"
         case .recents: "Recently Watched"
+        case .recordings: "Recordings"
         case .source(let id): source(withID: id)?.displayName ?? "Channels"
         case .group(_, let group): group
         case nil: "Channels"
@@ -158,10 +254,12 @@ final class AppModel {
     var sourceEditorTitle: String { isEditingSource ? "Edit Playlist" : "Add Playlist" }
 
     var canCommitSourceDraft: Bool {
-        guard let url = URL(string: sourceDraft.playlistURL.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            return false
-        }
-        return url.scheme?.lowercased() == "https" && url.host?.isEmpty == false
+        SourceURLPolicy.validatedURL(from: sourceDraft.playlistURL) != nil
+    }
+
+    var sourceDraftUsesUnencryptedTransport: Bool {
+        SourceURLPolicy.usesUnencryptedTransport(sourceDraft.playlistURL)
+            || SourceURLPolicy.usesUnencryptedTransport(sourceDraft.epgURL)
     }
 
     func bootstrap() async {
@@ -228,14 +326,17 @@ final class AppModel {
 
     func play(_ channel: ChannelRecord) {
         selectedChannelID = channel.stableID
+        selectedRecordingID = nil
         guard channel.isTransportAllowed else {
+            finishRecordingAfterRejectedSelection()
             presentedAlert = AppAlert(
-                title: "Insecure Stream Blocked",
-                message: "This channel uses an HTTP media host that ChannelDeck has not been configured to trust."
+                title: "Unsupported Stream",
+                message: "This channel does not provide a valid HTTP or HTTPS media address."
             )
             return
         }
         guard let streamURL = streamURLs[channel.stableID] else {
+            finishRecordingAfterRejectedSelection()
             presentedAlert = AppAlert(
                 title: "Channel Needs Refresh",
                 message: "The protected stream address is not loaded. Refresh this playlist and try again."
@@ -250,9 +351,273 @@ final class AppModel {
         let channelName = channel.name
         playbackPreparationTask = Task { [weak self] in
             guard let self else { return }
+            await finishActiveRecording()
             let playbackURL = await airPlayRelayController.playbackURL(for: streamURL)
             guard !Task.isCancelled, selectedChannelID == stableID else { return }
             playerController.play(url: playbackURL, channelName: channelName)
+        }
+    }
+
+    func play(_ recording: RecordingRecord) {
+        selectedRecordingID = recording.id
+        selectedChannelID = nil
+        playbackPreparationTask?.cancel()
+        playerController.stop()
+        let recordingID = recording.id
+        playbackPreparationTask = Task { [weak self] in
+            guard let self else { return }
+            await finishActiveRecording()
+            guard !Task.isCancelled,
+                  selectedRecordingID == recordingID,
+                  let recording = recordings.first(where: { $0.id == recordingID }),
+                  let recordingStorage else { return }
+            do {
+                let packageName = recording.packageName
+                let playbackURL = try await Task.detached(priority: .userInitiated) {
+                    try recordingStorage.playbackURL(inPackageNamed: packageName)
+                }.value
+                guard !Task.isCancelled, selectedRecordingID == recordingID else { return }
+                playerController.play(
+                    url: playbackURL,
+                    channelName: recording.channelName,
+                    allowsExternalPlayback: false
+                )
+                generateMissingThumbnail(for: recording, playbackURL: playbackURL)
+            } catch {
+                if selectedRecordingID == recordingID {
+                    presentedAlert = AppAlert(
+                        title: "Recording Unavailable",
+                        message: safeMessage(for: error)
+                    )
+                }
+            }
+        }
+    }
+
+    func setSaveBufferEnabled(_ enabled: Bool) {
+        guard enabled != bufferRecordingPhase.isEnabled else { return }
+        bufferRecordingTask?.cancel()
+        bufferRecordingTask = Task { [weak self] in
+            guard let self else { return }
+            if enabled {
+                await beginSavingBuffer()
+            } else {
+                await finishActiveRecording()
+            }
+        }
+    }
+
+    func recordingThumbnailURL(for recording: RecordingRecord) -> URL? {
+        guard let recordingStorage else { return nil }
+        return try? recordingStorage.thumbnailURL(
+            inPackageNamed: recording.packageName,
+            fileName: recording.thumbnailFileName
+        )
+    }
+
+    func requestRemoval(of recording: RecordingRecord) {
+        presentedAlert = AppAlert(
+            title: "Delete Recording?",
+            message: "This permanently removes \(recording.programmeTitle ?? recording.channelName) from this Mac.",
+            recordingID: recording.id
+        )
+    }
+
+    func revealRecording(_ recording: RecordingRecord) {
+        guard let recordingStorage else { return }
+        do {
+            let url = try recordingStorage.revealURL(
+                inPackageNamed: recording.packageName
+            )
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            presentedAlert = AppAlert(
+                title: "Recording Could Not Be Revealed",
+                message: safeMessage(for: error)
+            )
+        }
+    }
+
+    func removeRecording(id: UUID) {
+        guard let recording = recordings.first(where: { $0.id == id }),
+              let recordingStorage else { return }
+        do {
+            try recordingStorage.removePackage(named: recording.packageName)
+            if selectedRecordingID == id {
+                playbackPreparationTask?.cancel()
+                selectedRecordingID = nil
+                playerController.stop()
+            }
+            modelContext.delete(recording)
+            try modelContext.save()
+            reloadRecordings()
+        } catch {
+            presentedAlert = AppAlert(
+                title: "Recording Could Not Be Deleted",
+                message: safeMessage(for: error)
+            )
+        }
+    }
+
+    private func beginSavingBuffer() async {
+        guard let channel = selectedChannel else {
+            bufferRecordingPhase = .failed("Choose a playing channel before saving its buffer.")
+            return
+        }
+        guard airPlayRelayController.playbackIsRelayed,
+              playerController.liveDVRState.isAvailable else {
+            bufferRecordingPhase = .failed(
+                "Wait for the secure live buffer to become available, then try again."
+            )
+            return
+        }
+        guard let recordingStorage else {
+            bufferRecordingPhase = .failed("ChannelDeck could not access its recordings folder.")
+            return
+        }
+
+        let id = UUID()
+        let packageURL: URL
+        do {
+            packageURL = try recordingStorage.newPackageURL(for: id)
+        } catch {
+            bufferRecordingPhase = .failed(safeMessage(for: error))
+            return
+        }
+        let programme = currentProgramme(for: channel)
+        let metadata = PendingRecordingMetadata(
+            id: id,
+            channelStableID: channel.stableID,
+            sourceID: channel.sourceID,
+            channelName: channel.name,
+            groupName: channel.groupName,
+            logoURLString: channel.logoURLString,
+            programmeTitle: programme?.title,
+            programmeDescription: programme?.programmeDescription,
+            programmeStartDate: programme?.startDate,
+            programmeEndDate: programme?.endDate,
+            packageName: recordingStorage.packageName(for: id),
+            quality: bufferRecordingQuality
+        )
+        activeRecordingMetadata = metadata
+        bufferRecordingPhase = .starting
+
+        do {
+            let initialBufferedDuration = try await airPlayRelayController.beginBufferRecording(
+                id: id,
+                packageDirectory: packageURL,
+                quality: metadata.quality
+            )
+            guard activeRecordingMetadata?.id == id else { return }
+            bufferRecordingPhase = .recording(
+                startedAt: Date.now.addingTimeInterval(-initialBufferedDuration)
+            )
+        } catch {
+            guard activeRecordingMetadata?.id == id else { return }
+            activeRecordingMetadata = nil
+            try? recordingStorage.removePackage(named: metadata.packageName)
+            bufferRecordingPhase = .failed(safeMessage(for: error))
+        }
+    }
+
+    private func finishActiveRecording() async {
+        if let recordingFinalizationTask {
+            await recordingFinalizationTask.value
+            return
+        }
+        guard let metadata = activeRecordingMetadata else { return }
+        activeRecordingMetadata = nil
+        bufferRecordingPhase = .finalizing
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await finalizeRecording(metadata)
+        }
+        recordingFinalizationTask = task
+        await task.value
+        recordingFinalizationTask = nil
+    }
+
+    private func finalizeRecording(_ metadata: PendingRecordingMetadata) async {
+        do {
+            guard let artifact = try await airPlayRelayController.finishBufferRecording(),
+                  artifact.id == metadata.id else {
+                throw FFmpegLiveRecordingError.couldNotFinalize
+            }
+            let endedAt = Date.now
+            let record = RecordingRecord(
+                id: metadata.id,
+                channelStableID: metadata.channelStableID,
+                sourceID: metadata.sourceID,
+                channelName: metadata.channelName,
+                groupName: metadata.groupName,
+                logoURLString: metadata.logoURLString,
+                programmeTitle: metadata.programmeTitle,
+                programmeDescription: metadata.programmeDescription,
+                programmeStartDate: metadata.programmeStartDate,
+                programmeEndDate: metadata.programmeEndDate,
+                startedAt: endedAt.addingTimeInterval(-artifact.duration),
+                endedAt: endedAt,
+                duration: artifact.duration,
+                packageName: metadata.packageName,
+                thumbnailFileName: nil,
+                qualityRawValue: artifact.quality.rawValue
+            )
+            do {
+                modelContext.insert(record)
+                try modelContext.save()
+            } catch {
+                modelContext.delete(record)
+                throw error
+            }
+            reloadRecordings()
+            bufferRecordingPhase = .idle
+
+            Task { [weak self] in
+                let thumbnail = await RecordingThumbnailGenerator.generate(
+                    for: artifact.playbackURL,
+                    in: artifact.packageDirectory
+                )
+                guard let self, let thumbnail,
+                      let stored = recordings.first(where: { $0.id == metadata.id }) else { return }
+                stored.thumbnailFileName = thumbnail
+                try? modelContext.save()
+                reloadRecordings()
+            }
+        } catch {
+            if let recordingStorage {
+                try? recordingStorage.removePackage(named: metadata.packageName)
+            }
+            bufferRecordingPhase = .failed(safeMessage(for: error))
+        }
+    }
+
+    private func generateMissingThumbnail(
+        for recording: RecordingRecord,
+        playbackURL: URL
+    ) {
+        guard recording.thumbnailFileName == nil, let recordingStorage else { return }
+        let recordingID = recording.id
+        let packageName = recording.packageName
+        Task { [weak self] in
+            guard let package = try? recordingStorage.packageURL(named: packageName),
+                  let thumbnail = await RecordingThumbnailGenerator.generate(
+                    for: playbackURL,
+                    in: package
+                  ),
+                  let self,
+                  let stored = recordings.first(where: { $0.id == recordingID }),
+                  stored.thumbnailFileName == nil else { return }
+            stored.thumbnailFileName = thumbnail
+            try? modelContext.save()
+            reloadRecordings()
+        }
+    }
+
+    private func finishRecordingAfterRejectedSelection() {
+        guard activeRecordingMetadata != nil else { return }
+        bufferRecordingTask?.cancel()
+        bufferRecordingTask = Task { [weak self] in
+            await self?.finishActiveRecording()
         }
     }
 
@@ -365,8 +730,8 @@ final class AppModel {
 
     func commitSourceDraft() async -> Bool {
         sourceEditorError = nil
-        guard let playlistURL = secureHTTPSURL(from: sourceDraft.playlistURL) else {
-            sourceEditorError = "Enter a valid HTTPS playlist URL."
+        guard let playlistURL = SourceURLPolicy.validatedURL(from: sourceDraft.playlistURL) else {
+            sourceEditorError = "Enter a valid HTTP or HTTPS playlist URL."
             return false
         }
 
@@ -374,10 +739,10 @@ final class AppModel {
         let epgOverride: URL?
         if trimmedEPG.isEmpty {
             epgOverride = nil
-        } else if let url = secureHTTPSURL(from: trimmedEPG) {
+        } else if let url = SourceURLPolicy.validatedURL(from: trimmedEPG) {
             epgOverride = url
         } else {
-            sourceEditorError = "The EPG override must be a valid HTTPS URL."
+            sourceEditorError = "The EPG override must be a valid HTTP or HTTPS URL."
             return false
         }
 
@@ -465,6 +830,9 @@ final class AppModel {
 
     func removeSource(id sourceID: UUID) async {
         do {
+            if selectedChannel?.sourceID == sourceID {
+                await finishActiveRecording()
+            }
             try await encryptedCache.remove(for: sourceID)
             try await keychain.removeAll(for: sourceID)
 
@@ -694,6 +1062,7 @@ final class AppModel {
                     lhs.sourceID == rhs.sourceID ? lhs.sortIndex < rhs.sortIndex : lhs.name < rhs.name
                 }
             reloadRecents()
+            reloadRecordings()
         } catch {
             presentedAlert = AppAlert(title: "Library Error", message: "The local channel library could not be read.")
         }
@@ -730,6 +1099,21 @@ final class AppModel {
         }
     }
 
+    private func reloadRecordings() {
+        do {
+            recordings = try modelContext.fetch(
+                FetchDescriptor<RecordingRecord>(
+                    sortBy: [SortDescriptor(\.endedAt, order: .reverse)]
+                )
+            )
+        } catch {
+            presentedAlert = AppAlert(
+                title: "Library Error",
+                message: "Saved recordings could not be read."
+            )
+        }
+    }
+
     private func hydrateRuntimePlaylist(_ playlist: ParsedPlaylist, for sourceID: UUID) {
         runtimePlaylists[sourceID] = playlist
         let channelIDs = Set(channels.lazy.filter { $0.sourceID == sourceID }.map(\.stableID))
@@ -755,17 +1139,9 @@ final class AppModel {
         sources.first { $0.id == id }
     }
 
-    private func secureHTTPSURL(from value: String) -> URL? {
-        guard let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
-              url.scheme?.lowercased() == "https",
-              url.host?.isEmpty == false else { return nil }
-        return url
-    }
-
     private func isAllowedMediaURL(_ url: URL) -> Bool {
         switch url.scheme?.lowercased() {
-        case "https": true
-        case "http": url.host?.lowercased() == "vandijk.tvfor.pro"
+        case "http", "https": url.host?.isEmpty == false
         default: false
         }
     }

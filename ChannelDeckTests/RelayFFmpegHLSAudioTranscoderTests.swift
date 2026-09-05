@@ -95,7 +95,7 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         let segments = try FileManager.default.contentsOfDirectory(
             at: outputDirectory,
             includingPropertiesForKeys: nil
-        ).filter { $0.pathExtension == "ts" }
+        ).filter { $0.lastPathComponent.hasPrefix("segment-0-") }
         XCTAssertEqual(segments.count, 6)
 
         let generatedMaster = outputDirectory.appendingPathComponent("ffmpeg-index.m3u8")
@@ -109,6 +109,139 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
 
         await transcoder.stop()
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputDirectory.path))
+    }
+
+    func testRecordingRetainsCurrentWindowAndNewSegmentsAsNativeMediaFile() async throws {
+        let root = try makeTemporaryDirectory(named: "recording")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.successfulFakeFFmpeg, to: executable)
+        let recordingRoot = root.appendingPathComponent("Recordings", isDirectory: true)
+        try FileManager.default.createDirectory(at: recordingRoot, withIntermediateDirectories: false)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable),
+            startupTimeout: .seconds(3),
+            temporaryRoot: root,
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+        let session = try await transcoder.start(relayURL: Self.relayURL)
+        let liveDirectory = session.playlistURL.deletingLastPathComponent()
+        let recordingID = UUID()
+        let package = recordingRoot.appendingPathComponent(
+            "\(recordingID.uuidString.lowercased()).channeldeckrecording",
+            isDirectory: true
+        )
+
+        do {
+            _ = try await transcoder.beginRecording(
+                id: recordingID,
+                packageDirectory: recordingRoot.appendingPathComponent("../outside"),
+                quality: .compatible
+            )
+            XCTFail("Expected unsafe recording destination to be rejected")
+        } catch let error as FFmpegLiveRecordingError {
+            XCTAssertEqual(error, .invalidDestination)
+        }
+
+        let initialDuration = try await transcoder.beginRecording(
+            id: recordingID,
+            packageDirectory: package,
+            quality: .compatible
+        )
+        XCTAssertEqual(initialDuration, 24, accuracy: 0.001)
+        let nextSegmentName = "segment-0-000000006.ts"
+        try Data("transport-stream-6".utf8).write(
+            to: liveDirectory.appendingPathComponent(nextSegmentName)
+        )
+        let liveMediaURL = liveDirectory.appendingPathComponent("media-0.m3u8")
+        var updatedLiveMedia = try String(contentsOf: liveMediaURL, encoding: .utf8)
+        updatedLiveMedia += "#EXT-X-PROGRAM-DATE-TIME:2026-09-04T00:00:06Z\n#EXTINF:4.0,\n\(nextSegmentName)\n"
+        try Data(updatedLiveMedia.utf8).write(to: liveMediaURL, options: .atomic)
+        try await Task.sleep(for: .seconds(1))
+        let finishedRecording = try await transcoder.finishRecording()
+        let artifact = try XCTUnwrap(finishedRecording)
+
+        XCTAssertEqual(artifact.id, recordingID)
+        XCTAssertEqual(artifact.duration, 28, accuracy: 0.001)
+        XCTAssertEqual(artifact.segmentCount, 7)
+        XCTAssertEqual(artifact.playbackURL.lastPathComponent, RecordingStorage.mediaFileName)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: artifact.playbackURL.path))
+        XCTAssertEqual(
+            try String(contentsOf: artifact.playbackURL, encoding: .utf8),
+            (0 ... 6).map { "transport-stream-\($0)" }.joined()
+        )
+        XCTAssertEqual(
+            try FileManager.default.contentsOfDirectory(
+                at: package,
+                includingPropertiesForKeys: nil
+            ).filter { $0.pathExtension == "ts" }.count,
+            1
+        )
+
+        await transcoder.stop()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: liveDirectory.path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: artifact.playbackURL.path),
+            "Finalized recordings must outlive the rolling transcode directory"
+        )
+    }
+
+    func testSourceQualityRecordingRetainsOriginalResolutionWindow() async throws {
+        let root = try makeTemporaryDirectory(named: "source-recording")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.successfulFakeFFmpeg, to: executable)
+        let recordingRoot = root.appendingPathComponent("Recordings", isDirectory: true)
+        try FileManager.default.createDirectory(at: recordingRoot, withIntermediateDirectories: false)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable),
+            startupTimeout: .seconds(3),
+            temporaryRoot: root,
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+        _ = try await transcoder.start(relayURL: Self.relayURL)
+        let recordingID = UUID()
+        let package = recordingRoot.appendingPathComponent(
+            "\(recordingID.uuidString.lowercased()).channeldeckrecording",
+            isDirectory: true
+        )
+
+        let initialDuration = try await transcoder.beginRecording(
+            id: recordingID,
+            packageDirectory: package,
+            quality: .sourceVideo
+        )
+        let finishedRecording = try await transcoder.finishRecording()
+        let artifact = try XCTUnwrap(finishedRecording)
+
+        XCTAssertEqual(initialDuration, 24, accuracy: 0.001)
+        XCTAssertEqual(artifact.quality, .sourceVideo)
+        XCTAssertEqual(artifact.duration, 24, accuracy: 0.001)
+        XCTAssertEqual(
+            try String(contentsOf: artifact.playbackURL, encoding: .utf8),
+            (0 ... 5).map { "source-transport-stream-\($0)" }.joined()
+        )
+    }
+
+    func testRecordingRejectsMissingStreamAndUnsafeDestination() async throws {
+        let root = try makeTemporaryDirectory(named: "recording-validation")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: nil),
+            temporaryRoot: root
+        )
+        let id = UUID()
+
+        do {
+            _ = try await transcoder.beginRecording(
+                id: id,
+                packageDirectory: root.appendingPathComponent("../outside"),
+                quality: .sourceVideo
+            )
+            XCTFail("Expected a missing-stream error")
+        } catch let error as FFmpegLiveRecordingError {
+            XCTAssertEqual(error, .noActiveStream)
+        }
     }
 
     func testHEVCInputAutomaticallyRestartsWithVideoToolboxH264Output() async throws {
@@ -132,7 +265,7 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         let segments = try FileManager.default.contentsOfDirectory(
             at: session.playlistURL.deletingLastPathComponent(),
             includingPropertiesForKeys: nil
-        ).filter { $0.pathExtension == "ts" }
+        ).filter { $0.lastPathComponent.hasPrefix("segment-0-") }
         XCTAssertEqual(segments.count, 3)
         await transcoder.stop()
     }
@@ -158,7 +291,7 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         let segments = try FileManager.default.contentsOfDirectory(
             at: session.playlistURL.deletingLastPathComponent(),
             includingPropertiesForKeys: nil
-        ).filter { $0.pathExtension == "ts" }
+        ).filter { $0.lastPathComponent.hasPrefix("segment-0-") }
         XCTAssertEqual(segments.count, 3)
         await transcoder.stop()
     }
@@ -463,6 +596,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     case "$arguments" in *" -hls_time 4 "*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -hls_list_size 75 "*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -hls_delete_threshold 15 "*) ;; *) exit 64 ;; esac
+    case "$arguments" in *"source-segment-%09d.ts"*) ;; *) exit 64 ;; esac
+    case "$arguments" in *"source.m3u8"*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -hls_allow_cache "*) exit 64 ;; esac
     """# + "\n" + successfulOutputScript
 
@@ -481,17 +616,17 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     #!/bin/sh
     arguments=" $* "
     case "$arguments" in
-        *" -c:v copy "*)
-            printf 'Stream #0:0: Video: hevc (Main 10), yuv420p10le, 3840x2160, 50 fps, 50 tbr\n' >&2
-            trap 'exit 0' TERM INT
-            while :; do sleep 1; done
-            ;;
         *" -c:v h264_videotoolbox "*)
             case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -vf scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709 "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
             segment_limit=3
+            ;;
+        *" -c:v copy "*)
+            printf 'Stream #0:0: Video: hevc (Main 10), yuv420p10le, 3840x2160, 50 fps, 50 tbr\n' >&2
+            trap 'exit 0' TERM INT
+            while :; do sleep 1; done
             ;;
         *)
             exit 64
@@ -503,17 +638,17 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     #!/bin/sh
     arguments=" $* "
     case "$arguments" in
-        *" -c:v copy "*)
-            printf 'Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 25 fps, 25 tbr\n' >&2
-            trap 'exit 0' TERM INT
-            while :; do sleep 1; done
-            ;;
         *" -c:v h264_videotoolbox "*)
             case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -vf scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709 "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
             segment_limit=3
+            ;;
+        *" -c:v copy "*)
+            printf 'Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 25 fps, 25 tbr\n' >&2
+            trap 'exit 0' TERM INT
+            while :; do sleep 1; done
             ;;
         *)
             exit 64
@@ -583,6 +718,26 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         printf 'media-0.m3u8\n'
     } > "${master_playlist}.tmp"
     mv "${master_playlist}.tmp" "$master_playlist"
+
+    source_segment_template="$(dirname "$media_playlist")/source-segment-%09d.ts"
+    source_media_playlist="$(dirname "$media_playlist")/source.m3u8"
+    index=0
+    while [ "$index" -lt "$segment_limit" ]; do
+        source_segment=$(printf "$source_segment_template" "$index")
+        printf 'source-transport-stream-%s' "$index" > "${source_segment}.tmp"
+        mv "${source_segment}.tmp" "$source_segment"
+        index=$((index + 1))
+    done
+    {
+        printf '#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n'
+        index=0
+        while [ "$index" -lt "$segment_limit" ]; do
+            source_segment=$(printf "$source_segment_template" "$index")
+            printf '#EXTINF:4.0,\n#EXT-X-PROGRAM-DATE-TIME:2026-09-04T00:00:0%sZ\n%s\n' "$index" "$(basename "$source_segment")"
+            index=$((index + 1))
+        done
+    } > "${source_media_playlist}.tmp"
+    mv "${source_media_playlist}.tmp" "$source_media_playlist"
 
     trap 'exit 0' TERM INT
     while :; do sleep 1; done

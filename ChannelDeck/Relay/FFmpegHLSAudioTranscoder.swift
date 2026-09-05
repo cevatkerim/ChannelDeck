@@ -286,7 +286,57 @@ protocol HLSAudioTranscoding: Sendable {
     func start(relayURL: URL) async throws -> FFmpegHLSAudioTranscodeSession
     func startMPEGTS(feeding feed: @escaping MPEGTSFeeding) async throws
         -> FFmpegHLSAudioTranscodeSession
+    func beginRecording(
+        id: UUID,
+        packageDirectory: URL,
+        quality: BufferRecordingQuality
+    ) async throws -> TimeInterval
+    func finishRecording() async throws -> FFmpegLiveRecordingArtifact?
     func stop() async
+}
+
+struct FFmpegLiveRecordingArtifact: Equatable, Sendable {
+    let id: UUID
+    let packageDirectory: URL
+    let playbackURL: URL
+    let duration: TimeInterval
+    let segmentCount: Int
+    let quality: BufferRecordingQuality
+}
+
+enum FFmpegLiveRecordingError: Error, Equatable, LocalizedError, Sendable {
+    case noActiveStream
+    case alreadyRecording
+    case invalidDestination
+    case noMediaCaptured
+    case couldNotFinalize
+
+    var errorDescription: String? {
+        switch self {
+        case .noActiveStream:
+            "Start a relayed channel before saving its live buffer."
+        case .alreadyRecording:
+            "ChannelDeck is already saving this live buffer."
+        case .invalidDestination:
+            "ChannelDeck could not create a private recording package."
+        case .noMediaCaptured:
+            "The live buffer did not contain a complete media segment to save."
+        case .couldNotFinalize:
+            "ChannelDeck could not finalize the recording."
+        }
+    }
+}
+
+extension HLSAudioTranscoding {
+    func beginRecording(
+        id: UUID,
+        packageDirectory: URL,
+        quality: BufferRecordingQuality
+    ) async throws -> TimeInterval {
+        throw FFmpegLiveRecordingError.noActiveStream
+    }
+
+    func finishRecording() async throws -> FFmpegLiveRecordingArtifact? { nil }
 }
 
 enum FFmpegProcessFailureReason: Equatable, Sendable {
@@ -574,6 +624,23 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         let generatedMasterPlaylistURL: URL
         let receiverMasterPlaylistURL: URL
         let mediaPlaylistURL: URL
+        let sourceMediaPlaylistURL: URL
+    }
+
+    private struct CapturedRecordingSegment: Sendable {
+        let fileName: String
+        let metadataLines: [String]
+        let duration: TimeInterval
+    }
+
+    private struct ActiveRecording: Sendable {
+        let id: UUID
+        let packageDirectory: URL
+        let playbackURL: URL
+        let quality: BufferRecordingQuality
+        var segments: [CapturedRecordingSegment] = []
+        var capturedNames: Set<String> = []
+        var writeFailed = false
     }
 
     private let locator: any FFmpegExecutableLocating
@@ -583,6 +650,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private let frameRateInspector: any VideoFrameRateInspecting
     private let clock = ContinuousClock()
     private var active: ActiveTranscode?
+    private var activeRecording: ActiveRecording?
+    private var recordingMonitorTask: Task<Void, Never>?
 
     init(
         locator: any FFmpegExecutableLocating = DefaultFFmpegExecutableLocator(),
@@ -649,11 +718,18 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         let receiverMasterPlaylistURL = directory
             .appendingPathComponent("index.m3u8", isDirectory: false)
         let mediaPlaylistURL = directory.appendingPathComponent("media-0.m3u8", isDirectory: false)
+        let sourceMediaPlaylistURL = directory.appendingPathComponent(
+            "source.m3u8",
+            isDirectory: false
+        )
         let mediaPlaylistTemplate = directory
             .appendingPathComponent("media-%v.m3u8", isDirectory: false)
             .path
         let segmentTemplate = directory
             .appendingPathComponent("segment-%v-%09d.ts", isDirectory: false)
+            .path
+        let sourceSegmentTemplate = directory
+            .appendingPathComponent("source-segment-%09d.ts", isDirectory: false)
             .path
 
         let process = Process()
@@ -685,6 +761,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         process.arguments = Self.arguments(
             input: input,
             videoMode: videoMode,
+            sourceSegmentTemplate: sourceSegmentTemplate,
+            sourceMediaPlaylist: sourceMediaPlaylistURL.path,
             segmentTemplate: segmentTemplate,
             mediaPlaylistTemplate: mediaPlaylistTemplate
         )
@@ -729,7 +807,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             ),
             generatedMasterPlaylistURL: generatedMasterPlaylistURL,
             receiverMasterPlaylistURL: receiverMasterPlaylistURL,
-            mediaPlaylistURL: mediaPlaylistURL
+            mediaPlaylistURL: mediaPlaylistURL,
+            sourceMediaPlaylistURL: sourceMediaPlaylistURL
         )
 
         do {
@@ -745,10 +824,279 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     }
 
     func stop() async {
+        recordingMonitorTask?.cancel()
+        recordingMonitorTask = nil
+        if let activeRecording {
+            try? FileManager.default.removeItem(at: activeRecording.packageDirectory)
+            self.activeRecording = nil
+        }
         guard let active else { return }
         self.active = nil
         await terminate(active.ownedProcess)
         try? FileManager.default.removeItem(at: active.ownedProcess.directory)
+    }
+
+    /// Starts retaining the selected already-generated HLS window without
+    /// opening a second provider connection. Complete MPEG-TS segments are
+    /// appended to a native local media file as they arrive, so finalization is
+    /// constant-time even after a long recording.
+    func beginRecording(
+        id: UUID,
+        packageDirectory: URL,
+        quality: BufferRecordingQuality
+    ) async throws -> TimeInterval {
+        guard active != nil else {
+            throw FFmpegLiveRecordingError.noActiveStream
+        }
+        guard activeRecording == nil else {
+            throw FFmpegLiveRecordingError.alreadyRecording
+        }
+        guard Self.isValidRecordingDestination(packageDirectory, id: id) else {
+            throw FFmpegLiveRecordingError.invalidDestination
+        }
+
+        do {
+            try FileManager.default.createDirectory(
+                at: packageDirectory,
+                withIntermediateDirectories: false,
+                attributes: [.posixPermissions: NSNumber(value: Int16(0o700))]
+            )
+        } catch {
+            throw FFmpegLiveRecordingError.invalidDestination
+        }
+
+        let playbackURL = packageDirectory.appendingPathComponent(
+            RecordingStorage.mediaFileName,
+            isDirectory: false
+        )
+        guard FileManager.default.createFile(
+            atPath: playbackURL.path,
+            contents: nil,
+            attributes: [.posixPermissions: NSNumber(value: Int16(0o600))]
+        ) else {
+            try? FileManager.default.removeItem(at: packageDirectory)
+            throw FFmpegLiveRecordingError.invalidDestination
+        }
+
+        activeRecording = ActiveRecording(
+            id: id,
+            packageDirectory: packageDirectory,
+            playbackURL: playbackURL,
+            quality: quality
+        )
+
+        // Compatibility output is known to be ready when playback starts, but
+        // a copied source-video rendition may be finishing its first GOP. Give
+        // it a short bounded opportunity to publish so the UI can immediately
+        // report the adopted history instead of appearing to start at zero.
+        let initialCaptureDeadline = clock.now.advanced(by: .seconds(5))
+        while clock.now < initialCaptureDeadline {
+            captureRecordingSegments()
+            if let recording = activeRecording,
+               recording.writeFailed || !recording.segments.isEmpty {
+                break
+            }
+            if Task.isCancelled {
+                try? FileManager.default.removeItem(at: packageDirectory)
+                activeRecording = nil
+                throw CancellationError()
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        guard let activeRecording, !activeRecording.writeFailed else {
+            try? FileManager.default.removeItem(at: packageDirectory)
+            self.activeRecording = nil
+            throw FFmpegLiveRecordingError.couldNotFinalize
+        }
+        recordingMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(750))
+                guard !Task.isCancelled else { break }
+                await self?.captureRecordingSegments()
+            }
+        }
+        return activeRecording.segments.reduce(0) { $0 + $1.duration }
+    }
+
+    /// Seals the retained live segments as a self-contained MPEG-TS recording.
+    /// The active live transcode continues uninterrupted for local playback and
+    /// AirPlay until the caller switches channel.
+    func finishRecording() async throws -> FFmpegLiveRecordingArtifact? {
+        guard activeRecording != nil else { return nil }
+        recordingMonitorTask?.cancel()
+        recordingMonitorTask = nil
+        captureRecordingSegments()
+
+        guard let recording = activeRecording else { return nil }
+        activeRecording = nil
+        guard !recording.segments.isEmpty, !recording.writeFailed else {
+            try? FileManager.default.removeItem(at: recording.packageDirectory)
+            throw recording.segments.isEmpty
+                ? FFmpegLiveRecordingError.noMediaCaptured
+                : FFmpegLiveRecordingError.couldNotFinalize
+        }
+
+        do {
+            let handle = try FileHandle(forWritingTo: recording.playbackURL)
+            try handle.synchronize()
+            try handle.close()
+            let attributes = try FileManager.default.attributesOfItem(
+                atPath: recording.playbackURL.path
+            )
+            guard let size = attributes[.size] as? NSNumber, size.int64Value > 0 else {
+                throw FFmpegLiveRecordingError.couldNotFinalize
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: recording.packageDirectory)
+            throw FFmpegLiveRecordingError.couldNotFinalize
+        }
+
+        return FFmpegLiveRecordingArtifact(
+            id: recording.id,
+            packageDirectory: recording.packageDirectory,
+            playbackURL: recording.playbackURL,
+            duration: recording.segments.reduce(0) { $0 + $1.duration },
+            segmentCount: recording.segments.count,
+            quality: recording.quality
+        )
+    }
+
+    private func captureRecordingSegments() {
+        guard let active,
+              var recording = activeRecording else { return }
+
+        let mediaPlaylistURL: URL
+        let segmentPrefix: String
+        switch recording.quality {
+        case .sourceVideo:
+            mediaPlaylistURL = active.sourceMediaPlaylistURL
+            segmentPrefix = "source-segment-"
+        case .compatible:
+            mediaPlaylistURL = active.mediaPlaylistURL
+            segmentPrefix = "segment-0-"
+        }
+        guard let media = Self.readManifest(at: mediaPlaylistURL) else { return }
+
+        let parsed = Self.completedRecordingSegments(in: media, segmentPrefix: segmentPrefix)
+        for segment in parsed.segments where !recording.capturedNames.contains(segment.fileName) {
+            let source = active.ownedProcess.directory
+                .appendingPathComponent(segment.fileName, isDirectory: false)
+            guard Self.isSafeGeneratedSegmentName(
+                    segment.fileName,
+                    prefix: segmentPrefix
+                  ),
+                  source.standardizedFileURL.deletingLastPathComponent()
+                    == active.ownedProcess.directory.standardizedFileURL,
+                  FileManager.default.fileExists(atPath: source.path) else { continue }
+            do {
+                try Self.appendContents(of: source, to: recording.playbackURL)
+                recording.segments.append(segment)
+                recording.capturedNames.insert(segment.fileName)
+            } catch {
+                recording.writeFailed = true
+                break
+            }
+        }
+        activeRecording = recording
+    }
+
+    private static func appendContents(of source: URL, to destination: URL) throws {
+        let reader = try FileHandle(forReadingFrom: source)
+        defer { try? reader.close() }
+        let writer = try FileHandle(forWritingTo: destination)
+        defer { try? writer.close() }
+        let originalLength = try writer.seekToEnd()
+
+        do {
+            while let data = try reader.read(upToCount: 1_048_576), !data.isEmpty {
+                try writer.write(contentsOf: data)
+            }
+        } catch {
+            try? writer.truncate(atOffset: originalLength)
+            throw error
+        }
+    }
+
+    private static func completedRecordingSegments(
+        in playlist: String,
+        segmentPrefix: String = "segment-0-"
+    ) -> (targetDuration: Int, segments: [CapturedRecordingSegment]) {
+        let lines = playlist
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        var targetDuration = 12
+        var pendingProgramDateTime: String?
+        var pendingDiscontinuity = false
+        var pendingDuration: TimeInterval?
+        var segments: [CapturedRecordingSegment] = []
+
+        for line in lines {
+            if line.hasPrefix("#EXT-X-TARGETDURATION:"),
+               let value = Int(line.dropFirst("#EXT-X-TARGETDURATION:".count)),
+               (1 ... 120).contains(value) {
+                targetDuration = value
+            } else if line == "#EXT-X-DISCONTINUITY" {
+                pendingDiscontinuity = true
+            } else if line.hasPrefix("#EXT-X-PROGRAM-DATE-TIME:"), line.count <= 128 {
+                pendingProgramDateTime = line
+            } else if line.hasPrefix("#EXTINF:") {
+                let text = line
+                    .dropFirst("#EXTINF:".count)
+                    .split(separator: ",", maxSplits: 1, omittingEmptySubsequences: false)[0]
+                if let value = Double(text), value.isFinite, value > 0, value <= 120 {
+                    pendingDuration = value
+                } else {
+                    pendingDuration = nil
+                }
+            } else if !line.isEmpty, !line.hasPrefix("#") {
+                defer {
+                    pendingProgramDateTime = nil
+                    pendingDiscontinuity = false
+                    pendingDuration = nil
+                }
+                guard let duration = pendingDuration,
+                      isSafeGeneratedSegmentName(line, prefix: segmentPrefix) else { continue }
+                var metadata: [String] = []
+                if pendingDiscontinuity { metadata.append("#EXT-X-DISCONTINUITY") }
+                if let pendingProgramDateTime { metadata.append(pendingProgramDateTime) }
+                metadata.append("#EXTINF:\(String(format: "%.6f", duration)),")
+                segments.append(
+                    CapturedRecordingSegment(
+                        fileName: line,
+                        metadataLines: metadata,
+                        duration: duration
+                    )
+                )
+            }
+        }
+        return (max(1, targetDuration), segments)
+    }
+
+    private static func isSafeGeneratedSegmentName(
+        _ value: String,
+        prefix: String = "segment-0-"
+    ) -> Bool {
+        guard prefix == "segment-0-" || prefix == "source-segment-",
+              value.hasPrefix(prefix), value.hasSuffix(".ts") else { return false }
+        let sequence = value
+            .dropFirst(prefix.count)
+            .dropLast(".ts".count)
+        return sequence.count == 9
+            && sequence.allSatisfy { $0.isASCII && $0.isNumber }
+    }
+
+    private static func isValidRecordingDestination(_ url: URL, id: UUID) -> Bool {
+        guard url.isFileURL,
+              url.pathExtension == "channeldeckrecording",
+              url.lastPathComponent.caseInsensitiveCompare(
+                "\(id.uuidString).channeldeckrecording"
+              ) == .orderedSame,
+              url.standardizedFileURL == url,
+              !FileManager.default.fileExists(atPath: url.path) else { return false }
+        var isDirectory: ObjCBool = false
+        let parent = url.deletingLastPathComponent()
+        return FileManager.default.fileExists(atPath: parent.path, isDirectory: &isDirectory)
+            && isDirectory.boolValue
     }
 
     private func waitUntilReady(
@@ -876,6 +1224,12 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
     private func cancel(id: UUID) async {
         guard let active, active.id == id else { return }
+        recordingMonitorTask?.cancel()
+        recordingMonitorTask = nil
+        if let activeRecording {
+            try? FileManager.default.removeItem(at: activeRecording.packageDirectory)
+            self.activeRecording = nil
+        }
         self.active = nil
         await terminate(active.ownedProcess)
         try? FileManager.default.removeItem(at: active.ownedProcess.directory)
@@ -932,6 +1286,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private static func arguments(
         input: ProcessInput,
         videoMode: VideoMode,
+        sourceSegmentTemplate: String,
+        sourceMediaPlaylist: String,
         segmentTemplate: String,
         mediaPlaylistTemplate: String
     ) -> [String] {
@@ -983,17 +1339,31 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             ]
         }
 
-        return [
-            "-hide_banner",
-            // Stream metadata near the beginning of the private diagnostic
-            // buffer supplies FFmpeg's exact input rate. AVAsset is only a
-            // fallback when that metadata is absent. This text is never
-            // logged or surfaced.
-            "-loglevel", "info",
-            "-nostats",
-            "-nostdin",
-            "-y",
-        ] + inputArguments + [
+        let sourceRecordingOutputArguments = [
+            // Maintain an original-resolution rolling video rendition from the
+            // same input. Save Buffer can then retain UHD/HDR history without
+            // opening a second provider connection. AAC audio keeps the saved
+            // MPEG-TS file broadly playable by AVFoundation.
+            "-map", "0:v:0",
+            "-map", "0:a:0",
+            "-sn",
+            "-dn",
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-ac", "2",
+            "-ar", "48000",
+            "-b:a", "192k",
+            "-f", "hls",
+            "-hls_segment_type", "mpegts",
+            "-hls_time", String(hlsSegmentDurationSeconds),
+            "-hls_list_size", String(liveBufferSegmentCount),
+            "-hls_delete_threshold", String(liveBufferDeleteThreshold),
+            "-hls_flags", "delete_segments+independent_segments+temp_file+omit_endlist+program_date_time",
+            "-hls_segment_filename", sourceSegmentTemplate,
+            sourceMediaPlaylist,
+        ]
+
+        let compatibilityOutputArguments = [
             "-map", "0:v:0",
             "-map", "0:a:0",
             "-sn",
@@ -1021,6 +1391,18 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             "-hls_segment_filename", segmentTemplate,
             mediaPlaylistTemplate,
         ]
+
+        return [
+            "-hide_banner",
+            // Stream metadata near the beginning of the private diagnostic
+            // buffer supplies FFmpeg's exact input rate. AVAsset is only a
+            // fallback when that metadata is absent. This text is never
+            // logged or surfaced.
+            "-loglevel", "info",
+            "-nostats",
+            "-nostdin",
+            "-y",
+        ] + inputArguments + sourceRecordingOutputArguments + compatibilityOutputArguments
     }
 
     /// Returns only the normalized codec identifier from FFmpeg's private
