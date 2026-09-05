@@ -335,7 +335,7 @@ actor HLSRelaySessionCoordinator {
         sourceURL: URL,
         relayOrigin: URL
     ) async throws -> HLSRelaySessionDescriptor {
-        if sourceURL.pathExtension.caseInsensitiveCompare("ts") == .orderedSame {
+        if Self.shouldStreamAsMPEGTS(sourceURL) {
             guard let audioTranscoder, let mpegTSStreamer else {
                 throw HLSRelayError.unsupportedContinuousTransportStream
             }
@@ -353,6 +353,15 @@ actor HLSRelaySessionCoordinator {
         guard let audioTranscoder else { return sourceSession }
         let transcode = try await audioTranscoder.start(relayURL: sourceSession.playlistURL)
         return try await publish(transcode, for: sourceSession)
+    }
+
+    /// IPTV providers commonly expose continuous MPEG-TS feeds through opaque,
+    /// extensionless endpoints. Only explicit playlist extensions should take
+    /// the HLS proxy path; an extensionless URL otherwise gets misread as a
+    /// manifest and FFmpeg repeatedly retries a stream that can never parse.
+    private static func shouldStreamAsMPEGTS(_ sourceURL: URL) -> Bool {
+        let pathExtension = sourceURL.pathExtension.lowercased()
+        return pathExtension.isEmpty || pathExtension == "ts"
     }
 
     private func publish(

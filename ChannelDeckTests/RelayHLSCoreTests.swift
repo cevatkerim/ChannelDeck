@@ -464,6 +464,37 @@ final class RelayHLSCoreTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testCoordinatorStreamsExtensionlessIPTVEndpointAsRawTransport() async throws {
+        let upstream = RelayUpstreamStub(responses: [:])
+        let core = makeCore(upstream: upstream)
+        let output = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: output) }
+        try Data("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nmedia-0.m3u8\n".utf8)
+            .write(to: output.appendingPathComponent("index.m3u8"))
+        let transcoder = RelayAudioTranscoderStub(outputDirectory: output)
+        let streamer = RelayMPEGTSStreamerStub(payload: Data([0x47, 0x01, 0x02]))
+        let coordinator = HLSRelaySessionCoordinator(
+            core: core,
+            audioTranscoder: transcoder,
+            mpegTSStreamer: streamer,
+            preparationTimeout: .seconds(2)
+        )
+        let sourceURL = URL(string: "http://provider.invalid/live/opaque-channel?credential=private")!
+
+        let session = try await coordinator.prepare(sourceURL: sourceURL, relayOrigin: relayOrigin)
+        let upstreamRequestCount = await upstream.totalRequestCount()
+        let streamedSourceURL = await streamer.capturedSourceURL()
+        let rawInput = await transcoder.rawInputBytes()
+        let relayInputURLs = await transcoder.relayInputURLs()
+
+        XCTAssertEqual(session.playlistURL.path, "/s/\(Self.fixedToken)/transcoded/index.m3u8")
+        XCTAssertEqual(upstreamRequestCount, 0)
+        XCTAssertEqual(streamedSourceURL, sourceURL)
+        XCTAssertEqual(rawInput, Data([0x47, 0x01, 0x02]))
+        XCTAssertEqual(relayInputURLs, [])
+        await coordinator.stop()
+    }
+
     func testCoordinatorTimesOutRawPreparationCancelsProducerAndClearsSession() async throws {
         let upstream = RelayUpstreamStub(responses: [:])
         let core = makeCore(upstream: upstream)

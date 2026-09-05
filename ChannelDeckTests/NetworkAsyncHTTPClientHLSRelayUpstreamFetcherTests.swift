@@ -182,6 +182,26 @@ final class NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests: XCTestCase {
         XCTAssertTrue(receivedRequests.isEmpty)
     }
 
+    func testResolverPrefersPublicIPv4ButSupportsIPv6OnlyOrigins() {
+        XCTAssertEqual(
+            SystemHLSRelayUpstreamAddressResolver.preferredPublicAddress(
+                from: ["2001:4860:4860::8888", "93.184.216.34"]
+            ),
+            "93.184.216.34"
+        )
+        XCTAssertEqual(
+            SystemHLSRelayUpstreamAddressResolver.preferredPublicAddress(
+                from: ["2001:4860:4860::8888"]
+            ),
+            "2001:4860:4860::8888"
+        )
+        XCTAssertNil(
+            SystemHLSRelayUpstreamAddressResolver.preferredPublicAddress(
+                from: ["93.184.216.34", "192.168.1.25"]
+            )
+        )
+    }
+
     private func XCTAssertThrowsRelayError(
         _ expected: HLSRelayError,
         operation: () async throws -> Void,

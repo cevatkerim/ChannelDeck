@@ -214,13 +214,23 @@ struct SystemHLSRelayUpstreamAddressResolver: HLSRelayUpstreamAddressResolving {
         }
         return try await Task.detached(priority: .userInitiated) {
             let addresses = try Self.resolve(host: host)
-            guard !addresses.isEmpty,
-                  addresses.allSatisfy(Self.isPublicIPAddress),
-                  let selected = addresses.first else {
+            guard let selected = Self.preferredPublicAddress(from: addresses) else {
                 throw HLSRelayError.upstreamFailure
             }
             return selected
         }.value
+    }
+
+    /// A pinned request cannot use the system's Happy Eyeballs fallback after
+    /// DNS resolution. Prefer IPv4 when both families are public because many
+    /// IPTV origins advertise IPv6 endpoints that do not accept the stream
+    /// connection, while retaining IPv6 support for IPv6-only origins.
+    static func preferredPublicAddress(from addresses: [String]) -> String? {
+        guard !addresses.isEmpty,
+              addresses.allSatisfy(Self.isPublicIPAddress) else {
+            return nil
+        }
+        return addresses.first(where: Self.isIPv4Address) ?? addresses.first
     }
 
     private static func resolve(host: String) throws -> [String] {
@@ -288,6 +298,11 @@ struct SystemHLSRelayUpstreamAddressResolver: HLSRelayUpstreamAddressResolving {
             }
         }
         return false
+    }
+
+    private static func isIPv4Address(_ value: String) -> Bool {
+        var address = in_addr()
+        return inet_pton(AF_INET, value, &address) == 1
     }
 
     private static func isPublicIPv4(_ address: UInt32) -> Bool {
