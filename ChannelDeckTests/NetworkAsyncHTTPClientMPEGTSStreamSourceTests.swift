@@ -150,7 +150,8 @@ final class NetworkAsyncHTTPClientMPEGTSStreamSourceTests: XCTestCase {
             transport: failingTransport,
             addressResolver: MPEGTSAddressResolverStub(
                 addresses: ["provider.example": "203.0.113.46"]
-            )
+            ),
+            transientRetryDelays: []
         )
         do {
             try await failingSource.stream(from: secretURL, into: MPEGTSRecordingConsumer())
@@ -160,6 +161,31 @@ final class NetworkAsyncHTTPClientMPEGTSStreamSourceTests: XCTestCase {
             XCTAssertFalse((error.errorDescription ?? "").contains("private-token"))
             XCTAssertFalse(String(describing: error).contains("private-token"))
         }
+    }
+
+    func testRetriesTransientTransportFailureAndRepinsBeforeContinuing() async throws {
+        let sourceURL = try XCTUnwrap(URL(string: "http://provider.example/channel.ts"))
+        let transport = MPEGTSFailOnceStreamingTransport(
+            payload: Data([0x47, 9, 8, 7])
+        )
+        let resolver = MPEGTSAddressResolverStub(addresses: [
+            "provider.example": "203.0.113.49"
+        ])
+        let source = AsyncHTTPClientMPEGTSStreamSource(
+            transport: transport,
+            addressResolver: resolver,
+            transientRetryDelays: [.zero]
+        )
+        let consumer = MPEGTSRecordingConsumer()
+
+        try await source.stream(from: sourceURL, into: consumer)
+
+        let requestCount = await transport.requestCount()
+        let resolvedURLs = await resolver.resolvedURLs()
+        let consumedChunks = await consumer.values()
+        XCTAssertEqual(requestCount, 2)
+        XCTAssertEqual(resolvedURLs, [sourceURL, sourceURL])
+        XCTAssertEqual(consumedChunks, [Data([0x47, 9, 8, 7])])
     }
 
     func testRejectsNonSuccessWithoutSendingErrorBodyToConsumer() async throws {
@@ -320,6 +346,29 @@ private actor MPEGTSBlockingStreamingTransport: MPEGTSHTTPStreamingTransporting 
             startedWaiters.append(continuation)
         }
     }
+}
+
+private actor MPEGTSFailOnceStreamingTransport: MPEGTSHTTPStreamingTransporting {
+    private let payload: Data
+    private var attempts = 0
+
+    init(payload: Data) {
+        self.payload = payload
+    }
+
+    func execute(
+        _ request: MPEGTSHTTPStreamRequest,
+        consumer: any MPEGTSByteConsuming
+    ) async throws -> MPEGTSHTTPStreamResponseHead {
+        attempts += 1
+        if attempts == 1 {
+            throw URLError(.networkConnectionLost)
+        }
+        try await consumer.consume(payload)
+        return .init(statusCode: 200, contentType: "video/mp2t")
+    }
+
+    func requestCount() -> Int { attempts }
 }
 
 private func XCTAssertThrowsMPEGTSRelayError(

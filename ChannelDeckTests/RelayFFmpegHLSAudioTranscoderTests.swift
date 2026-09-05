@@ -124,17 +124,57 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         await transcoder.stop()
     }
 
-    func testInputVideoCodecClassificationRequiresFallbackForHEVCButNotH264() {
+    func testH264LongGOPAutomaticallyRestartsWhenCopyProducesNoSegment() async throws {
+        let root = try makeTemporaryDirectory(named: "h264-long-gop-fallback")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.automaticH264LongGOPFallbackFakeFFmpeg, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable),
+            startupTimeout: .seconds(3),
+            streamCopyProbeTimeout: .milliseconds(150),
+            temporaryRoot: root,
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+
+        let session = try await transcoder.start(relayURL: Self.relayURL)
+        let master = try String(contentsOf: session.playlistURL, encoding: .utf8)
+
+        XCTAssertTrue(master.contains("RESOLUTION=1920x1080"))
+        XCTAssertTrue(master.contains("CODECS=\"avc1.640028,mp4a.40.2\""))
+        let segments = try FileManager.default.contentsOfDirectory(
+            at: session.playlistURL.deletingLastPathComponent(),
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "ts" }
+        XCTAssertEqual(segments.count, 3)
+        await transcoder.stop()
+    }
+
+    func testInputVideoClassificationRequiresFallbackForHEVCAndOversizedH264() {
         let hevc = "Stream #0:0: Video: hevc (Main 10), yuv420p10le, 3840x2160, 50 fps"
         let h264 = "Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 25 fps"
+        let h264UHD = "Stream #0:0: Video: h264 (High), yuv420p, 3840x2160, 50 fps"
 
         XCTAssertEqual(
             FFmpegHLSAudioTranscoder.inputVideoCodec(fromFFmpegDiagnostics: hevc),
             "hevc"
         )
+        XCTAssertEqual(
+            FFmpegHLSAudioTranscoder.inputVideoResolution(fromFFmpegDiagnostics: h264UHD)?.width,
+            3_840
+        )
+        XCTAssertEqual(
+            FFmpegHLSAudioTranscoder.inputVideoResolution(fromFFmpegDiagnostics: h264UHD)?.height,
+            2_160
+        )
         XCTAssertTrue(
             FFmpegHLSAudioTranscoder.inputRequiresH264Transcode(
                 fromFFmpegDiagnostics: hevc
+            )
+        )
+        XCTAssertTrue(
+            FFmpegHLSAudioTranscoder.inputRequiresH264Transcode(
+                fromFFmpegDiagnostics: h264UHD
             )
         )
         XCTAssertFalse(
@@ -435,7 +475,27 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             ;;
         *" -c:v h264_videotoolbox "*)
             case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
-            case "$arguments" in *" -vf scale=w='min(1920,iw)':h=-2:flags=lanczos,format=nv12 "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -vf scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12 "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
+            segment_limit=3
+            ;;
+        *)
+            exit 64
+            ;;
+    esac
+    """# + "\n" + successfulOutputScript
+
+    private static let automaticH264LongGOPFallbackFakeFFmpeg = #"""
+    #!/bin/sh
+    arguments=" $* "
+    case "$arguments" in
+        *" -c:v copy "*)
+            printf 'Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 25 fps, 25 tbr\n' >&2
+            trap 'exit 0' TERM INT
+            while :; do sleep 1; done
+            ;;
+        *" -c:v h264_videotoolbox "*)
+            case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
             segment_limit=3
             ;;

@@ -150,7 +150,10 @@ actor AsyncHTTPClientMPEGTSStreamingTransport: MPEGTSHTTPStreamingTransporting {
     private static func configuration() -> AsyncHTTPClient.HTTPClient.Configuration {
         AsyncHTTPClient.HTTPClient.Configuration(
             redirectConfiguration: .disallow,
-            timeout: .init(connect: .seconds(15), read: .seconds(30)),
+            // MPEG-TS television feeds deliver data continuously. A ten-second
+            // gap is a dead socket, and detecting it promptly leaves enough of
+            // the AirPlay preparation budget for a pinned reconnect.
+            timeout: .init(connect: .seconds(15), read: .seconds(10)),
             decompression: .disabled
         )
     }
@@ -175,16 +178,24 @@ struct AsyncHTTPClientMPEGTSStreamSource: MPEGTSUpstreamStreaming {
     private let transport: any MPEGTSHTTPStreamingTransporting
     private let addressResolver: any HLSRelayUpstreamAddressResolving
     private let maximumRedirects: Int
+    private let transientRetryDelays: [Duration]
 
     init(
         transport: any MPEGTSHTTPStreamingTransporting = AsyncHTTPClientMPEGTSStreamingTransport.shared,
         addressResolver: any HLSRelayUpstreamAddressResolving = SystemHLSRelayUpstreamAddressResolver(),
-        maximumRedirects: Int = 5
+        maximumRedirects: Int = 5,
+        transientRetryDelays: [Duration] = [
+            .milliseconds(250),
+            .seconds(1),
+            .seconds(2),
+        ]
     ) {
         precondition((0 ... 10).contains(maximumRedirects))
+        precondition(transientRetryDelays.allSatisfy { $0 >= .zero })
         self.transport = transport
         self.addressResolver = addressResolver
         self.maximumRedirects = maximumRedirects
+        self.transientRetryDelays = transientRetryDelays
     }
 
     func stream(
@@ -195,17 +206,33 @@ struct AsyncHTTPClientMPEGTSStreamSource: MPEGTSUpstreamStreaming {
             var currentURL = try validatedURL(sourceURL)
             var visited = Set([canonicalRedirectKey(currentURL)])
             var followedRedirects = 0
+            var transientFailureCount = 0
 
             while true {
                 try Task.checkCancellation()
                 let connectionAddress = try await addressResolver.allowedConnectionAddress(for: currentURL)
-                let response = try await transport.execute(
-                    MPEGTSHTTPStreamRequest(
-                        url: currentURL,
-                        connectionAddress: connectionAddress
-                    ),
-                    consumer: consumer
-                )
+                let response: MPEGTSHTTPStreamResponseHead
+                do {
+                    response = try await transport.execute(
+                        MPEGTSHTTPStreamRequest(
+                            url: currentURL,
+                            connectionAddress: connectionAddress
+                        ),
+                        consumer: consumer
+                    )
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch where Task.isCancelled {
+                    throw CancellationError()
+                } catch {
+                    guard transientFailureCount < transientRetryDelays.count else {
+                        throw HLSRelayError.upstreamFailure
+                    }
+                    let retryDelay = transientRetryDelays[transientFailureCount]
+                    transientFailureCount += 1
+                    try await Task.sleep(for: retryDelay)
+                    continue
+                }
                 try Task.checkCancellation()
 
                 if Self.isRedirect(response.statusCode) {

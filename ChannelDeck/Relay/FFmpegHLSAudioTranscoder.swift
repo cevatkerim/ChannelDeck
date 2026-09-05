@@ -575,6 +575,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
     private let locator: any FFmpegExecutableLocating
     private let startupTimeout: Duration
+    private let streamCopyProbeTimeout: Duration
     private let temporaryRoot: URL
     private let frameRateInspector: any VideoFrameRateInspecting
     private let clock = ContinuousClock()
@@ -583,12 +584,15 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     init(
         locator: any FFmpegExecutableLocating = DefaultFFmpegExecutableLocator(),
         startupTimeout: Duration = FFmpegHLSAudioTranscoder.defaultStartupTimeout,
+        streamCopyProbeTimeout: Duration = .seconds(12),
         temporaryRoot: URL = FileManager.default.temporaryDirectory,
         frameRateInspector: any VideoFrameRateInspecting = AVAssetVideoFrameRateInspector()
     ) {
         precondition(startupTimeout > .zero)
+        precondition(streamCopyProbeTimeout > .zero)
         self.locator = locator
         self.startupTimeout = startupTimeout
+        self.streamCopyProbeTimeout = streamCopyProbeTimeout
         self.temporaryRoot = temporaryRoot
         self.frameRateInspector = frameRateInspector
     }
@@ -749,6 +753,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         videoMode: VideoMode
     ) async throws -> FFmpegHLSAudioTranscodeSession {
         let deadline = clock.now.advanced(by: startupTimeout)
+        let streamCopyProbeDeadline = clock.now.advanced(by: streamCopyProbeTimeout)
         while clock.now < deadline {
             try Task.checkCancellation()
             guard let active, active.id == id else {
@@ -790,6 +795,15 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                         playlistURL: active.receiverMasterPlaylistURL
                     )
                 }
+            }
+            if videoMode == .streamCopy,
+               clock.now >= streamCopyProbeDeadline,
+               Self.readManifest(at: active.mediaPlaylistURL) == nil {
+                // Some IPTV H.264 feeds use UHD or very long source GOPs. A
+                // copied HLS rendition cannot publish until its next keyframe,
+                // which can exceed the whole AirPlay startup budget. Restart
+                // with VideoToolbox so ChannelDeck owns a four-second GOP.
+                throw TranscodeAttemptError.videoRequiresTranscode
             }
             try await Task.sleep(for: .milliseconds(100))
         }
@@ -884,6 +898,15 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         }
         // Closing after the child exits also unblocks any in-flight pipe write.
         ownedProcess.closeInput()
+
+        // A codec/long-GOP fallback reuses the feed closure immediately. Give
+        // the cancelled reader a bounded opportunity to close its provider
+        // connection first; otherwise single-connection IPTV origins can
+        // accept the replacement request but leave it permanently silent.
+        let inputShutdownDeadline = clock.now.advanced(by: .seconds(2))
+        while ownedProcess.inputStatus == .feeding, clock.now < inputShutdownDeadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
     }
 
     private func makeOwnedTemporaryDirectory() throws -> URL {
@@ -932,10 +955,10 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         case .h264VideoToolbox:
             videoArguments = [
                 // UHD services commonly use 10-bit HEVC in MPEG-TS. Convert
-                // only those non-H.264 inputs with Apple's hardware encoder,
-                // and cap the receiver rendition at 1080p for broad AirPlay
+                // non-H.264 and oversized H.264 inputs with Apple's hardware
+                // encoder, and cap both dimensions at 1080p for broad AirPlay
                 // compatibility and predictable LAN bandwidth.
-                "-vf", "scale=w='min(1920,iw)':h=-2:flags=lanczos,format=nv12",
+                "-vf", "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12",
                 "-c:v", "h264_videotoolbox",
                 "-profile:v", "high",
                 "-level:v", "4.2",
@@ -1002,11 +1025,42 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         return diagnostics[codecRange].lowercased()
     }
 
+    /// Extracts bounded dimensions from FFmpeg's first video stream line. UHD
+    /// H.264 still needs conversion: copying it preserves receiver-incompatible
+    /// dimensions and leaves segment creation dependent on the provider's long
+    /// GOP cadence.
+    static func inputVideoResolution(
+        fromFFmpegDiagnostics diagnostics: String
+    ) -> (width: Int, height: Int)? {
+        guard let expression = try? NSRegularExpression(
+            pattern: #"Video:[^\r\n]*?,\s*([0-9]{2,5})x([0-9]{2,5})(?:[\s,\[]|$)"#,
+            options: [.caseInsensitive]
+        ),
+        let match = expression.firstMatch(
+            in: diagnostics,
+            range: NSRange(diagnostics.startIndex..., in: diagnostics)
+        ),
+        match.numberOfRanges == 3,
+        let widthRange = Range(match.range(at: 1), in: diagnostics),
+        let heightRange = Range(match.range(at: 2), in: diagnostics),
+        let width = Int(diagnostics[widthRange]),
+        let height = Int(diagnostics[heightRange]),
+        (16 ... 16_384).contains(width),
+        (16 ... 16_384).contains(height) else {
+            return nil
+        }
+        return (width, height)
+    }
+
     static func inputRequiresH264Transcode(fromFFmpegDiagnostics diagnostics: String) -> Bool {
         guard let codec = inputVideoCodec(fromFFmpegDiagnostics: diagnostics) else {
             return false
         }
-        return codec != "h264"
+        if codec != "h264" { return true }
+        guard let resolution = inputVideoResolution(fromFFmpegDiagnostics: diagnostics) else {
+            return false
+        }
+        return resolution.width > 1_920 || resolution.height > 1_080
     }
 
     private static func isOpaqueRelayURL(_ url: URL) -> Bool {
