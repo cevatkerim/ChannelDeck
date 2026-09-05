@@ -772,13 +772,16 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             if Self.manifestsAreReady(
                 masterPlaylistURL: active.generatedMasterPlaylistURL,
                 mediaPlaylistURL: active.mediaPlaylistURL,
-                within: active.ownedProcess.directory
+                within: active.ownedProcess.directory,
+                minimumSegmentCount: videoMode == .h264VideoToolbox ? 3 : 6
             ) {
+                let minimumSegmentCount = videoMode == .h264VideoToolbox ? 3 : 6
                 let published = await Self.publishReceiverMaster(
                     generatedMasterPlaylistURL: active.generatedMasterPlaylistURL,
                     receiverMasterPlaylistURL: active.receiverMasterPlaylistURL,
                     mediaPlaylistURL: active.mediaPlaylistURL,
                     within: active.ownedProcess.directory,
+                    minimumSegmentCount: minimumSegmentCount,
                     frameRateInspector: frameRateInspector,
                     ffmpegDiagnostics: active.ownedProcess.diagnosticText()
                 )
@@ -1030,8 +1033,10 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private static func manifestsAreReady(
         masterPlaylistURL: URL,
         mediaPlaylistURL: URL,
-        within directory: URL
+        within directory: URL,
+        minimumSegmentCount: Int
     ) -> Bool {
+        precondition(minimumSegmentCount >= 3)
         guard let master = readManifest(at: masterPlaylistURL),
               master.hasPrefix("#EXTM3U") else {
             return false
@@ -1058,7 +1063,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         let extentCount = lines.filter { $0.hasPrefix("#EXTINF:") }.count
         let programDateTimeCount = lines.filter { $0.hasPrefix("#EXT-X-PROGRAM-DATE-TIME:") }.count
         let segmentReferences = lines.filter { !$0.isEmpty && !$0.hasPrefix("#") }
-        guard extentCount >= 6,
+        guard extentCount >= minimumSegmentCount,
               programDateTimeCount >= extentCount,
               segmentReferences.count == extentCount else {
             return false
@@ -1101,13 +1106,15 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         receiverMasterPlaylistURL: URL,
         mediaPlaylistURL: URL,
         within directory: URL,
+        minimumSegmentCount: Int,
         frameRateInspector: any VideoFrameRateInspecting,
         ffmpegDiagnostics: String
     ) async -> Bool {
         guard let generatedMaster = readManifest(at: generatedMasterPlaylistURL),
               let measurements = segmentBitrateMeasurements(
                   mediaPlaylistURL: mediaPlaylistURL,
-                  within: directory
+                  within: directory,
+                  minimumSegmentCount: minimumSegmentCount
               ),
               let resolution = resolution(in: generatedMaster),
               let codecs = codecs(in: generatedMaster) else {
@@ -1173,12 +1180,14 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
     private static func segmentBitrateMeasurements(
         mediaPlaylistURL: URL,
-        within directory: URL
+        within directory: URL,
+        minimumSegmentCount: Int
     ) -> (
         peakBitsPerSecond: Double,
         averageBitsPerSecond: Double,
         firstSegmentURL: URL
     )? {
+        precondition(minimumSegmentCount >= 3)
         guard let media = readManifest(at: mediaPlaylistURL) else { return nil }
         let lines = media
             .split(whereSeparator: \.isNewline)
@@ -1217,7 +1226,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             pendingDuration = nil
         }
 
-        guard segmentMeasurements.count >= 6 else { return nil }
+        guard segmentMeasurements.count >= minimumSegmentCount else { return nil }
         let peak = segmentMeasurements
             .map { Double($0.bytes) * 8 / $0.duration }
             .max() ?? 0

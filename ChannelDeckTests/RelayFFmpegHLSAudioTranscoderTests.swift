@@ -116,6 +116,11 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         XCTAssertTrue(master.contains("RESOLUTION=1920x1080"))
         XCTAssertTrue(master.contains("FRAME-RATE=25.000"))
         XCTAssertTrue(master.contains("CODECS=\"avc1.640028,mp4a.40.2\""))
+        let segments = try FileManager.default.contentsOfDirectory(
+            at: session.playlistURL.deletingLastPathComponent(),
+            includingPropertiesForKeys: nil
+        ).filter { $0.pathExtension == "ts" }
+        XCTAssertEqual(segments.count, 3)
         await transcoder.stop()
     }
 
@@ -432,6 +437,7 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -vf scale=w='min(1920,iw)':h=-2:flags=lanczos,format=nv12 "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
+            segment_limit=3
             ;;
         *)
             exit 64
@@ -440,6 +446,7 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     """# + "\n" + successfulOutputScript
 
     private static let successfulOutputScript = #"""
+    segment_limit=${segment_limit:-6}
     case "$arguments" in *" -loglevel info "*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -nostats "*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -var_stream_map v:0,a:0 "*) ;; *) exit 64 ;; esac
@@ -476,7 +483,7 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     master_playlist="$(dirname "$media_playlist")/ffmpeg-index.m3u8"
 
     index=0
-    while [ "$index" -lt 6 ]; do
+    while [ "$index" -lt "$segment_limit" ]; do
         segment=$(printf "$segment_template" "$index")
         printf 'transport-stream-%s' "$index" > "${segment}.tmp"
         mv "${segment}.tmp" "$segment"
@@ -486,7 +493,7 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     {
         printf '#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-INDEPENDENT-SEGMENTS\n'
         index=0
-        while [ "$index" -lt 6 ]; do
+        while [ "$index" -lt "$segment_limit" ]; do
             segment=$(printf "$segment_template" "$index")
             printf '#EXTINF:4.0,\n#EXT-X-PROGRAM-DATE-TIME:2026-09-04T00:00:0%sZ\n%s\n' "$index" "$(basename "$segment")"
             index=$((index + 1))
