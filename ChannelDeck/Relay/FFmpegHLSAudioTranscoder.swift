@@ -957,11 +957,20 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                 // UHD services commonly use 10-bit HEVC in MPEG-TS. Convert
                 // non-H.264 and oversized H.264 inputs with Apple's hardware
                 // encoder, and cap both dimensions at 1080p for broad AirPlay
-                // compatibility and predictable LAN bandwidth.
-                "-vf", "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12",
+                // compatibility and predictable LAN bandwidth. The encoder
+                // otherwise preserves BT.2020/PQ tags from HDR inputs even
+                // after converting them to 8-bit H.264. AirPlay receivers can
+                // accept the playlist and then reject that contradictory
+                // H.264/SDR rendition after its first segment, so publish one
+                // internally consistent BT.709 limited-range stream.
+                "-vf", "scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709",
                 "-c:v", "h264_videotoolbox",
                 "-profile:v", "high",
                 "-level:v", "4.2",
+                "-color_range", "tv",
+                "-color_primaries", "bt709",
+                "-color_trc", "bt709",
+                "-colorspace", "bt709",
                 "-b:v", "10000k",
                 "-maxrate:v", "12000k",
                 "-bufsize:v", "20000k",

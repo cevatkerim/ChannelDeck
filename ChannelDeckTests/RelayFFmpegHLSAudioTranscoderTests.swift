@@ -475,7 +475,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             ;;
         *" -c:v h264_videotoolbox "*)
             case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
-            case "$arguments" in *" -vf scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12 "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -vf scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709 "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
             segment_limit=3
             ;;
@@ -496,6 +497,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             ;;
         *" -c:v h264_videotoolbox "*)
             case "$arguments" in *" -hwaccel videotoolbox "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -vf scale=w='min(1920,iw)':h='min(1080,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,format=nv12,setparams=range=tv:color_primaries=bt709:color_trc=bt709:colorspace=bt709 "*) ;; *) exit 64 ;; esac
+            case "$arguments" in *" -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 "*) ;; *) exit 64 ;; esac
             case "$arguments" in *" -force_key_frames expr:gte(t,n_forced*4) "*) ;; *) exit 64 ;; esac
             segment_limit=3
             ;;
