@@ -10,6 +10,7 @@
 ## Product and UX
 
 - Use a three-column `NavigationSplitView`: library/playlists/groups in the sidebar, a globally searchable channel browser in the content column, and a large native player with programme information in the detail column. Keep playlist group trees collapsible, expand the active playlist automatically, and show channel counts so very large catalogues remain easy to navigate.
+- Brand the app with a scalable channel-deck/playback icon and show a lightweight, accessible launch view while the persisted catalogue and relay state are restored. Defer large catalogue reads until SwiftUI has drawn the first window, and never impose an artificial splash delay.
 - Provide first-run and playlist-management sheets for display name, HTTP or HTTPS M3U URL, and optional EPG override. Prefer HTTPS and show an inline privacy warning before accepting an unencrypted HTTP source. Support adding, editing, reordering, refreshing, and confirmed removal of multiple sources.
 - Show channel logo, name, group, live state, current/next programme, and favorite state. Downsample logos off the main thread and share a bounded decoded-image cache across recycled list rows. Selecting a channel immediately replaces the single active player item.
 - Include Favorites and the 20 most recent successfully played channels, native playback controls, fullscreen, Picture in Picture, an explicit AirPlay picker, loading/buffering indicators, retry actions, and useful empty/error states.

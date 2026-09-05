@@ -2,19 +2,33 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppModel.self) private var appModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
         @Bindable var appModel = appModel
 
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView()
-        } content: {
-            ChannelBrowserView()
-        } detail: {
-            PlayerDetailView()
+        ZStack {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SidebarView()
+            } content: {
+                ChannelBrowserView()
+            } detail: {
+                PlayerDetailView()
+            }
+            .navigationSplitViewStyle(.balanced)
+            .opacity(appModel.isBootstrapping ? 0 : 1)
+            .accessibilityHidden(appModel.isBootstrapping)
+
+            if appModel.isBootstrapping {
+                LaunchScreenView()
+                    .zIndex(1)
+            }
         }
-        .navigationSplitViewStyle(.balanced)
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.22),
+            value: appModel.isBootstrapping
+        )
         .frame(
             minWidth: ChannelDeckStyle.windowMinimumSize.width,
             minHeight: ChannelDeckStyle.windowMinimumSize.height

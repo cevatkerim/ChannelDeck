@@ -205,6 +205,7 @@ final class AppModel {
     }
     var globalChannelSearchResultIDs: [String] = []
     var isSearchingChannels = false
+    var isBootstrapping = true
     private(set) var channelIndexRevision = 0
     var refreshingSourceIDs: Set<UUID> = []
     var isLoadingProgrammeGuide = false
@@ -269,10 +270,6 @@ final class AppModel {
         self.encryptedCache = EncryptedPlaylistCache(keyStore: resolvedKeychain)
         self.httpClient = httpClient
         self.recordingStorage = try? RecordingStorage()
-        // Channels are enough to draw the first frame. Loading thousands of
-        // guide rows here made App.init block and produced a beachball.
-        reloadCoreState()
-        isLoadingProgrammeGuide = !sources.isEmpty
         observePlaybackForRecents()
     }
 
@@ -354,6 +351,11 @@ final class AppModel {
         guard !didBootstrap else { return }
         didBootstrap = true
         await Task.yield()
+        // Defer catalogue reads until after SwiftUI can draw the launch view.
+        // Large libraries should never delay creation of the first window.
+        reloadCoreState()
+        isLoadingProgrammeGuide = !sources.isEmpty
+        defer { isBootstrapping = false }
         // Enter the relay bootstrap phase before yielding to playlist refresh
         // work. Channel selection can still interleave while networking is in
         // progress, but playbackURL(for:) will now wait for that in-flight
@@ -375,6 +377,10 @@ final class AppModel {
         if case .favorites = sidebarSelection, let firstSource = sources.first {
             sidebarSelection = .source(firstSource.id)
         }
+
+        // Cached content is ready to use. Network refreshes continue with the
+        // normal interface visible instead of extending the launch screen.
+        isBootstrapping = false
 
         for source in sources {
             if refreshIsDue(lastRefresh: source.lastPlaylistRefresh, interval: 6 * 60 * 60) {

@@ -60,6 +60,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeck
         PRODUCT_NAME: ChannelDeck
         GENERATE_INFOPLIST_FILE: false
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
   ChannelDeckTests:
     type: bundle.unit-test

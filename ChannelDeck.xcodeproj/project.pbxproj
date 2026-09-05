@@ -20,6 +20,7 @@
 		210C149E82CA1EEA66E4ABBB /* RecordingStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC737C02B4795BD33AFDCD5C /* RecordingStorageTests.swift */; };
 		253D3A6C2D4E76921450F49C /* HLSPlaylistRewriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D9CFBE668406250E38311FB /* HLSPlaylistRewriter.swift */; };
 		2893AA7F79BC8055669115C2 /* ParserXMLTVParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */; };
+		29EA45E3F0908C12A0CF4F28 /* LaunchScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D1551A2487F145D59ECA4F /* LaunchScreenView.swift */; };
 		2FB1A7A50BF41F78496C0E55 /* HLSRelayCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F18F9B280CB4CB404137412E /* HLSRelayCore.swift */; };
 		357ACC284FE6A15639BC34C0 /* PlaybackControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA6C40FD24DD492AB750CE50 /* PlaybackControllerTests.swift */; };
 		363D1139B28E0E4FB7FCCA39 /* HLSRelayResponseDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D96CC1FB2EB6F9CF33296B9 /* HLSRelayResponseDiagnostics.swift */; };
@@ -155,6 +156,7 @@
 		DC737C02B4795BD33AFDCD5C /* RecordingStorageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingStorageTests.swift; sourceTree = "<group>"; };
 		DC9F662E4E644905B8BB20EF /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		E34FB43226895A545D95DA33 /* ACMEProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEProtocols.swift; sourceTree = "<group>"; };
+		E3D1551A2487F145D59ECA4F /* LaunchScreenView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchScreenView.swift; sourceTree = "<group>"; };
 		E3D62F10A740D269C32C0070 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		EF00699FCD0549D463896696 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncHTTPClientHLSRelayUpstreamFetcher.swift; sourceTree = "<group>"; };
 		F18F9B280CB4CB404137412E /* HLSRelayCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSRelayCore.swift; sourceTree = "<group>"; };
@@ -303,6 +305,7 @@
 				C915009D8900E3EF1C049CE4 /* ChannelLogoView.swift */,
 				DC9F662E4E644905B8BB20EF /* ContentView.swift */,
 				295034392F963C6820187799 /* DesignSystem.swift */,
+				E3D1551A2487F145D59ECA4F /* LaunchScreenView.swift */,
 				02D150A65494AEB03330C20D /* PlayerDetailView.swift */,
 				1B2282548A51A61478E67974 /* SettingsView.swift */,
 				E3D62F10A740D269C32C0070 /* SidebarView.swift */,
@@ -508,6 +511,7 @@
 				0B323FBBFC0AFA6A428D2CBF /* HTTPClient.swift in Sources */,
 				D70B9AD436611E6F3E28765F /* KeychainStore.swift in Sources */,
 				C727AD201A6C04C9F8416DE0 /* LANAddressResolver.swift in Sources */,
+				29EA45E3F0908C12A0CF4F28 /* LaunchScreenView.swift in Sources */,
 				76BE4855D8ECE0A85CDB309F /* M3UParser.swift in Sources */,
 				F976BEF6C94DE2231CA0C876 /* PersistenceModels.swift in Sources */,
 				0130765783266356F90D2052 /* PlayerController.swift in Sources */,
