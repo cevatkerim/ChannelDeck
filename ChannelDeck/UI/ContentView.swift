@@ -9,14 +9,26 @@ struct ContentView: View {
         @Bindable var appModel = appModel
 
         ZStack {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                SidebarView()
-            } content: {
-                ChannelBrowserView()
-            } detail: {
-                PlayerDetailView()
+            Group {
+                if appModel.sidebarSelection == .guide {
+                    NavigationSplitView(columnVisibility: $columnVisibility) {
+                        SidebarView()
+                    } detail: {
+                        ProgrammeGuideView()
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                } else {
+                    NavigationSplitView(columnVisibility: $columnVisibility) {
+                        SidebarView()
+                    } content: {
+                        ChannelBrowserView()
+                    } detail: {
+                        PlayerDetailView()
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                }
             }
-            .navigationSplitViewStyle(.balanced)
+            .tint(ChannelDeckStyle.accent)
             .opacity(appModel.isBootstrapping ? 0 : 1)
             .accessibilityHidden(appModel.isBootstrapping)
 

@@ -8,6 +8,7 @@ enum SidebarSelection: Hashable {
     case favorites
     case recents
     case recordings
+    case guide
     case source(UUID)
     case group(UUID, String)
 }
@@ -91,6 +92,10 @@ struct ProgrammeGuideIndex {
         schedules[channelStableID]?.last { programme in
             programme.startDate <= date && date < programme.endDate
         }
+    }
+
+    func schedule(channelStableID: String, from start: Date, to end: Date) -> [ProgrammeRecord] {
+        (schedules[channelStableID] ?? []).filter { $0.endDate > start && $0.startDate < end }
     }
 
     func next(channelStableID: String, at date: Date) -> ProgrammeRecord? {
@@ -197,6 +202,11 @@ final class AppModel {
     var sidebarSelection: SidebarSelection? = .favorites
     var selectedChannelID: String?
     var selectedRecordingID: UUID?
+    private enum PlaybackTarget: Equatable {
+        case channel(String)
+        case recording(UUID)
+    }
+    private var playbackTarget: PlaybackTarget?
     var searchText = "" {
         didSet {
             guard searchText != oldValue else { return }
@@ -207,6 +217,7 @@ final class AppModel {
     var isSearchingChannels = false
     var isBootstrapping = true
     private(set) var channelIndexRevision = 0
+    private(set) var guideSearchRevision = 0
     var refreshingSourceIDs: Set<UUID> = []
     var isLoadingProgrammeGuide = false
 
@@ -215,6 +226,17 @@ final class AppModel {
     var sourceDraft = SourceDraft()
     var sourceEditorError: String?
     var presentedAlert: AppAlert?
+    var playbackPreparation: PlaybackPreparation?
+    var playbackIssue: PlaybackIssue?
+    var availableRecordingBytes: Int64?
+    var libraryPreferences: LibraryPreferences {
+        didSet {
+            guideSearchRevision &+= 1
+            if let data = try? JSONEncoder().encode(libraryPreferences) {
+                preferenceStore.set(data, forKey: LibraryPreferences.defaultsKey)
+            }
+        }
+    }
     var bufferRecordingPhase: BufferRecordingPhase = .idle
     var bufferRecordingQuality: BufferRecordingQuality = .savedDefault {
         didSet {
@@ -225,6 +247,7 @@ final class AppModel {
         }
     }
 
+    @ObservationIgnored private let preferenceStore: UserDefaults
     @ObservationIgnored private let modelContext: ModelContext
     @ObservationIgnored private let keychain: any KeychainStoring
     @ObservationIgnored private let encryptedCache: EncryptedPlaylistCache
@@ -250,6 +273,10 @@ final class AppModel {
     @ObservationIgnored private var channelSearchIndex = ChannelSearchIndex()
     @ObservationIgnored private var channelSearchTask: Task<Void, Never>?
     private var programmeGuideIndex = ProgrammeGuideIndex()
+    @ObservationIgnored private var guideSearchIndex = GuideSearchIndex()
+
+    var guideSearchSnapshot: GuideSearchIndex { guideSearchIndex }
+    var guideHasFavorites: Bool { !guideSearchIndex.favoriteIDs.isEmpty }
 
     private struct ChannelGroupKey: Hashable {
         let sourceID: UUID
@@ -260,8 +287,12 @@ final class AppModel {
         modelContainer: ModelContainer,
         playerController: PlayerController = PlayerController(),
         keychain: (any KeychainStoring)? = nil,
-        httpClient: HTTPClient = HTTPClient()
+        httpClient: HTTPClient = HTTPClient(),
+        preferenceStore: UserDefaults = .standard
     ) {
+        self.preferenceStore = preferenceStore
+        self.libraryPreferences = preferenceStore.data(forKey: LibraryPreferences.defaultsKey)
+            .flatMap { try? JSONDecoder().decode(LibraryPreferences.self, from: $0) } ?? LibraryPreferences()
         self.modelContext = ModelContext(modelContainer)
         self.playerController = playerController
         let resolvedKeychain = keychain ?? KeychainStore()
@@ -286,16 +317,20 @@ final class AppModel {
     var filteredChannels: [ChannelRecord] {
         _ = channelIndexRevision
         if isGlobalChannelSearchActive {
-            return globalChannelSearchResultIDs.compactMap { channelByID[$0] }
+            return globalChannelSearchResultIDs.compactMap { channelByID[$0] }.filter(isChannelVisible)
         }
 
         let base: [ChannelRecord]
         switch sidebarSelection {
         case .favorites:
-            base = channels.filter(\.isFavorite)
+            base = favoriteChannels
         case .recents:
             base = recents.compactMap { channelByID[$0.channelStableID] }
         case .recordings:
+            base = []
+        case .guide:
+            // The timeline owns its catalogue. The outgoing native channel list
+            // must not expand to every playlist during the navigation transition.
             base = []
         case .source(let sourceID):
             base = channelsBySourceID[sourceID] ?? []
@@ -304,7 +339,34 @@ final class AppModel {
         case nil:
             base = channels
         }
-        return base
+        if sidebarSelection == .favorites || sidebarSelection == .recents { return base }
+        return base.filter(isChannelVisible)
+    }
+
+    var favoriteChannels: [ChannelRecord] {
+        let favorites = channels.filter(\.isFavorite)
+        let byID = Dictionary(uniqueKeysWithValues: favorites.map { ($0.stableID, $0) })
+        return libraryPreferences.orderedFavoriteIDs(favorites.map(\.stableID)).compactMap { byID[$0] }
+    }
+
+    func isChannelVisible(_ channel: ChannelRecord) -> Bool {
+        libraryPreferences.isGroupVisible(channel.groupName, sourceID: channel.sourceID)
+    }
+
+    func setGroupVisible(_ visible: Bool, group: String, sourceID: UUID) {
+        libraryPreferences.setGroupVisible(visible, group: group, sourceID: sourceID)
+        if !visible, sidebarSelection == .group(sourceID, group) { sidebarSelection = .source(sourceID) }
+    }
+
+    func moveFavorites(from offsets: IndexSet, to destination: Int) {
+        libraryPreferences.moveFavorites(from: offsets, to: destination, availableIDs: favoriteChannels.map(\.stableID))
+    }
+
+    func moveFavorite(_ channel: ChannelRecord, by offset: Int) {
+        let favorites = favoriteChannels
+        guard let index = favorites.firstIndex(where: { $0.stableID == channel.stableID }),
+              favorites.indices.contains(index + offset) else { return }
+        moveFavorites(from: IndexSet(integer: index), to: offset > 0 ? index + offset + 1 : index + offset)
     }
 
     var filteredRecordings: [RecordingRecord] {
@@ -324,6 +386,7 @@ final class AppModel {
         case .favorites: "Favorites"
         case .recents: "Recently Watched"
         case .recordings: "Recordings"
+        case .guide: "TV guide"
         case .source(let id): source(withID: id)?.displayName ?? "Channels"
         case .group(_, let group): group
         case nil: "Channels"
@@ -426,78 +489,126 @@ final class AppModel {
         programmeGuideIndex.next(channelStableID: channel.stableID, at: date)
     }
 
-    func isPlaying(_ channel: ChannelRecord) -> Bool {
-        selectedChannelID == channel.stableID && playerController.state != .idle
+    func schedule(for channel: ChannelRecord, from start: Date, to end: Date) -> [ProgrammeRecord] {
+        programmeGuideIndex.schedule(channelStableID: channel.stableID, from: start, to: end)
     }
 
-    func play(_ channel: ChannelRecord) {
+    func isPlaying(_ channel: ChannelRecord) -> Bool {
+        playbackTarget == .channel(channel.stableID) && playerController.state != .idle
+    }
+
+    func play(_ channel: ChannelRecord, force: Bool = false) {
+        // A List updates its selection binding before this action runs. Compare
+        // the actual playback target so a new selection can replace old media.
+        if !force, playbackTarget == .channel(channel.stableID), playbackIssue == nil,
+           playbackPreparation != nil || playerController.state != .idle { return }
+        playbackTarget = .channel(channel.stableID)
+        playbackPreparationTask?.cancel()
+        pendingRecentChannelID = nil
+        playbackPreparation = nil
+        playbackIssue = nil
         selectedChannelID = channel.stableID
         selectedRecordingID = nil
+        playerController.stop()
         guard channel.isTransportAllowed else {
             finishRecordingAfterRejectedSelection()
-            presentedAlert = AppAlert(
-                title: "Unsupported Stream",
-                message: "This channel does not provide a valid HTTP or HTTPS media address."
-            )
+            playbackIssue = PlaybackIssue(title: "This channel can't be opened",
+                message: "The playlist doesn't contain a supported media address for this channel.")
             return
         }
         guard let streamURL = streamURLs[channel.stableID] else {
             finishRecordingAfterRejectedSelection()
-            presentedAlert = AppAlert(
-                title: "Channel Needs Refresh",
-                message: "The protected stream address is not loaded. Refresh this playlist and try again."
-            )
+            playbackIssue = PlaybackIssue(title: "Let's reconnect this channel",
+                message: "Refresh its playlist to load the latest stream address.", sourceToRefresh: channel.sourceID)
             return
         }
 
-        playbackPreparationTask?.cancel()
-        playerController.stop()
         pendingRecentChannelID = channel.stableID
-        let stableID = channel.stableID
-        let channelName = channel.name
+        let preparation = PlaybackPreparation(kind: .channel)
+        playbackPreparation = preparation
         playbackPreparationTask = Task { [weak self] in
             guard let self else { return }
+            defer { if playbackPreparation?.id == preparation.id { playbackPreparation = nil } }
             await finishActiveRecording()
+            guard !Task.isCancelled, playbackPreparation?.id == preparation.id else { return }
             let playbackURL = await airPlayRelayController.playbackURL(for: streamURL)
-            guard !Task.isCancelled, selectedChannelID == stableID else { return }
-            playerController.play(url: playbackURL, channelName: channelName)
+            guard !Task.isCancelled, playbackPreparation?.id == preparation.id,
+                  selectedChannelID == channel.stableID else { return }
+            playerController.play(url: playbackURL, channelName: channel.name)
         }
     }
 
-    func play(_ recording: RecordingRecord) {
+    func play(_ recording: RecordingRecord, force: Bool = false) {
+        if !force, playbackTarget == .recording(recording.id), playbackIssue == nil,
+           playbackPreparation != nil || playerController.state != .idle { return }
+        playbackTarget = .recording(recording.id)
+        playbackPreparationTask?.cancel()
+        pendingRecentChannelID = nil
+        playbackIssue = nil
         selectedRecordingID = recording.id
         selectedChannelID = nil
-        playbackPreparationTask?.cancel()
         playerController.stop()
-        let recordingID = recording.id
+        let preparation = PlaybackPreparation(kind: .recording)
+        playbackPreparation = preparation
         playbackPreparationTask = Task { [weak self] in
             guard let self else { return }
+            defer { if playbackPreparation?.id == preparation.id { playbackPreparation = nil } }
             await finishActiveRecording()
-            guard !Task.isCancelled,
-                  selectedRecordingID == recordingID,
-                  let recording = recordings.first(where: { $0.id == recordingID }),
-                  let recordingStorage else { return }
+            guard !Task.isCancelled, playbackPreparation?.id == preparation.id else { return }
             do {
+                guard let recordingStorage else { throw RecordingStorageError.applicationSupportUnavailable }
                 let packageName = recording.packageName
                 let playbackURL = try await Task.detached(priority: .userInitiated) {
                     try recordingStorage.playbackURL(inPackageNamed: packageName)
                 }.value
-                guard !Task.isCancelled, selectedRecordingID == recordingID else { return }
-                playerController.play(
-                    url: playbackURL,
-                    channelName: recording.channelName,
-                    allowsExternalPlayback: false
-                )
+                guard !Task.isCancelled, playbackPreparation?.id == preparation.id else { return }
+                playerController.play(url: playbackURL, channelName: recording.channelName, allowsExternalPlayback: false)
                 generateMissingThumbnail(for: recording, playbackURL: playbackURL)
             } catch {
-                if selectedRecordingID == recordingID {
-                    presentedAlert = AppAlert(
-                        title: "Recording Unavailable",
-                        message: safeMessage(for: error)
-                    )
-                }
+                guard !Task.isCancelled, playbackPreparation?.id == preparation.id else { return }
+                playbackIssue = PlaybackIssue(title: "This recording couldn't open", message: safeMessage(for: error))
             }
         }
+    }
+
+    func stopPlayback() {
+        playbackPreparationTask?.cancel()
+        playbackTarget = nil
+        pendingRecentChannelID = nil
+        playbackPreparation = nil
+        playbackIssue = nil
+        playerController.stop()
+        if bufferRecordingPhase.isEnabled { setSaveBufferEnabled(false) }
+    }
+
+    func retryPlayback() {
+        if let sourceID = playbackIssue?.sourceToRefresh, let channel = selectedChannel {
+            let preparation = PlaybackPreparation(kind: .channel)
+            playbackPreparation = preparation
+            playbackIssue = nil
+            playbackPreparationTask?.cancel()
+            playbackPreparationTask = Task { [weak self] in
+                guard let self else { return }
+                await refresh(sourceID: sourceID, force: true)
+                guard !Task.isCancelled, playbackPreparation?.id == preparation.id else { return }
+                playbackPreparation = nil
+                if let refreshed = self.channel(withID: channel.stableID) {
+                    play(refreshed, force: true)
+                } else {
+                    selectedChannelID = nil
+                }
+            }
+        } else if let channel = selectedChannel { play(channel, force: true) }
+        else if let recording = selectedRecording { play(recording, force: true) }
+    }
+
+    func refreshRecordingDiskSpace() async {
+        guard let recordingStorage else { return }
+        let root = recordingStorage.rootURL.deletingLastPathComponent()
+        availableRecordingBytes = await Task.detached(priority: .utility) {
+            let values = try? root.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey])
+            return values?.volumeAvailableCapacityForImportantUsage ?? values?.volumeAvailableCapacity.map(Int64.init)
+        }.value
     }
 
     func setSaveBufferEnabled(_ enabled: Bool) {
@@ -567,7 +678,7 @@ final class AppModel {
 
     private func beginSavingBuffer() async {
         guard let channel = selectedChannel else {
-            bufferRecordingPhase = .failed("Choose a playing channel before saving its buffer.")
+            bufferRecordingPhase = .failed("Choose a playing channel before starting a recording.")
             return
         }
         guard airPlayRelayController.playbackIsRelayed,
@@ -729,6 +840,8 @@ final class AppModel {
 
     func toggleFavorite(_ channel: ChannelRecord) {
         channel.isFavorite.toggle()
+        guideSearchIndex.setFavorite(channel.isFavorite, channelID: channel.stableID)
+        guideSearchRevision &+= 1
         saveContext(showingErrorAs: "Favorite Could Not Be Saved")
     }
 
@@ -951,7 +1064,7 @@ final class AppModel {
 
             runtimePlaylists[sourceID] = nil
             streamURLs = streamURLs.filter { key, _ in
-                channels.first(where: { $0.stableID == key })?.sourceID != sourceID
+                channelByID[key]?.sourceID != sourceID
             }
             if selectedChannel?.sourceID == sourceID {
                 selectedChannelID = nil
@@ -1038,8 +1151,10 @@ final class AppModel {
         )
         var retainedIDs: Set<String> = []
 
+        // Use the catalogue index here: a linear scan per URL makes large
+        // playlist refreshes quadratic and blocks the main thread for minutes.
         streamURLs = streamURLs.filter { key, _ in
-            channels.first(where: { $0.stableID == key })?.sourceID != sourceID
+            channelByID[key]?.sourceID != sourceID
         }
 
         for parsed in playlist.channels {
@@ -1212,6 +1327,11 @@ final class AppModel {
                 )
             }
         )
+        guideSearchIndex.replaceChannels(channels.map { channel in
+            GuideSearchChannel(stableID: channel.stableID, sourceID: channel.sourceID,
+                               name: channel.name, groupName: channel.groupName)
+        }, favoriteIDs: Set(channels.lazy.filter(\.isFavorite).map(\.stableID)))
+        guideSearchRevision &+= 1
         channelIndexRevision &+= 1
         scheduleGlobalChannelSearch()
     }
@@ -1246,11 +1366,14 @@ final class AppModel {
         }
     }
 
+    func refreshGuideWindow() {
+        reloadProgrammeState()
+    }
+
     private func reloadProgrammeState(at date: Date = .now) {
         do {
-            // The UI only presents the current and next programme. A six-hour
-            // horizon covers long events while avoiding eager materialization
-            // of the complete 36-hour guide during launch and list updates.
+            // Load the current broadcast plus the timeline's three two-hour pages,
+            // without materializing the complete 36-hour provider guide.
             let upperBound = date.addingTimeInterval(6 * 60 * 60)
             let descriptor = FetchDescriptor<ProgrammeRecord>(
                 predicate: #Predicate { programme in
@@ -1263,6 +1386,11 @@ final class AppModel {
             )
             programmes = try modelContext.fetch(descriptor)
             programmeGuideIndex = ProgrammeGuideIndex(programmes: programmes)
+            guideSearchIndex.replaceProgrammes(programmes.map { programme in
+                GuideSearchProgramme(channelID: programme.channelStableID, title: programme.title,
+                                     start: programme.startDate, end: programme.endDate)
+            })
+            guideSearchRevision &+= 1
         } catch {
             presentedAlert = AppAlert(title: "Library Error", message: "The local programme guide could not be read.")
         }

@@ -1,0 +1,91 @@
+// Reproducible vector artwork; run with: swift Scripts/render-brand.swift
+import AppKit
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
+
+let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+let assets = root.appendingPathComponent("ChannelDeck/Resources/Assets.xcassets")
+func color(_ hex: UInt32, alpha: CGFloat = 1) -> CGColor {
+    CGColor(srgbRed: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255,
+            blue: CGFloat(hex & 255) / 255, alpha: alpha)
+}
+func rounded(_ rect: CGRect, _ radius: CGFloat, angle: CGFloat = 0) -> CGPath {
+    let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+    var t = CGAffineTransform(translationX: rect.midX, y: rect.midY)
+        .rotated(by: angle * .pi / 180).translatedBy(x: -rect.midX, y: -rect.midY)
+    return path.copy(using: &t)!
+}
+let back = rounded(CGRect(x: 308, y: 231, width: 480, height: 451), 106, angle: 9)
+let front = rounded(CGRect(x: 222, y: 337, width: 491, height: 402), 106, angle: -8)
+let play: CGPath = {
+    let p = CGMutablePath()
+    p.move(to: CGPoint(x: 443, y: 458))
+    p.addQuadCurve(to: CGPoint(x: 460, y: 461), control: CGPoint(x: 443, y: 449))
+    p.addLine(to: CGPoint(x: 569, y: 520))
+    p.addQuadCurve(to: CGPoint(x: 569, y: 539), control: CGPoint(x: 585, y: 529))
+    p.addLine(to: CGPoint(x: 459, y: 601))
+    p.addQuadCurve(to: CGPoint(x: 443, y: 590), control: CGPoint(x: 442, y: 610))
+    p.closeSubpath()
+    var t = CGAffineTransform(translationX: 490, y: 530).rotated(by: -8 * .pi / 180).translatedBy(x: -490, y: -530)
+    return p.copy(using: &t)!
+}()
+func gradient(_ context: CGContext, path: CGPath, colors: [CGColor], start: CGPoint, end: CGPoint) {
+    context.saveGState()
+    context.addPath(path); context.clip()
+    context.drawLinearGradient(CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!, colors: colors as CFArray,
+        locations: [0, 1])!, start: start, end: end, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+    context.restoreGState()
+}
+func drawIcon(_ c: CGContext) {
+    let base = rounded(CGRect(x: 70, y: 70, width: 884, height: 884), 210)
+    c.saveGState()
+    c.setShadow(offset: CGSize(width: 0, height: 12), blur: 25, color: color(0x0C3026, alpha: 0.2))
+    c.setFillColor(color(0x153F33)); c.addPath(base); c.fillPath(); c.restoreGState()
+    gradient(c, path: base, colors: [color(0x285E4C), color(0x0F2D25)],
+             start: CGPoint(x: 150, y: 80), end: CGPoint(x: 830, y: 940))
+    c.setLineWidth(2); c.setStrokeColor(color(0xCAFFE3, alpha: 0.18)); c.addPath(base); c.strokePath()
+    gradient(c, path: back, colors: [color(0x91E5BF), color(0x429B7C)],
+             start: CGPoint(x: 340, y: 230), end: CGPoint(x: 730, y: 720))
+    c.saveGState()
+    c.setShadow(offset: CGSize(width: 0, height: 16), blur: 25, color: color(0x09251D, alpha: 0.35))
+    c.setFillColor(color(0xBDF4D8)); c.addPath(front); c.fillPath(); c.restoreGState()
+    gradient(c, path: front, colors: [color(0xE5FFEE), color(0x8ADFB6)],
+             start: CGPoint(x: 260, y: 325), end: CGPoint(x: 700, y: 790))
+    c.setLineWidth(2); c.setStrokeColor(color(0xFFFFFF, alpha: 0.55)); c.addPath(front); c.strokePath()
+    c.setFillColor(color(0x174A39)); c.addPath(play); c.fillPath()
+}
+func drawSymbol(_ c: CGContext) {
+    c.setFillColor(color(0x000000)); c.setStrokeColor(color(0x000000)); c.setLineWidth(48)
+    // Use a vector clipping mask: clear blend mode is not preserved by PDF renderers.
+    c.saveGState()
+    c.addRect(CGRect(x: 0, y: 0, width: 1024, height: 1024))
+    c.addPath(rounded(CGRect(x: 200, y: 315, width: 535, height: 446), 128, angle: -8))
+    c.clip(using: .evenOdd)
+    c.addPath(back); c.strokePath()
+    c.restoreGState()
+    c.addPath(front); c.addPath(play); c.drawPath(using: .eoFill)
+}
+func png(size: Int, to url: URL, symbol: Bool = false) throws {
+    let c = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    c.scaleBy(x: CGFloat(size) / 1024, y: CGFloat(size) / 1024)
+    c.translateBy(x: 0, y: 1024); c.scaleBy(x: 1, y: -1)
+    if symbol { drawSymbol(c) } else { drawIcon(c) }
+    let image = c.makeImage()!
+    let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, image, nil)
+    guard CGImageDestinationFinalize(destination) else { fatalError("Couldn't write artwork") }
+}
+for size in [16, 32, 64, 128, 256, 512, 1024] {
+    try png(size: size, to: assets.appendingPathComponent("AppIcon.appiconset/icon_\(size)x\(size).png"))
+}
+try png(size: 512, to: assets.appendingPathComponent("ChannelDeckMark.imageset/ChannelDeckMark.png"))
+try png(size: 1024, to: assets.appendingPathComponent("ChannelDeckMark.imageset/ChannelDeckMark@2x.png"))
+try png(size: 1024, to: root.appendingPathComponent("docs/brand/channeldeck-icon.png"))
+var bounds = CGRect(x: 0, y: 0, width: 1024, height: 1024)
+let url = assets.appendingPathComponent("ChannelDeckSymbol.imageset/ChannelDeckSymbol.pdf")
+let pdf = CGContext(url as CFURL, mediaBox: &bounds, nil)!
+pdf.beginPDFPage(nil); pdf.translateBy(x: 0, y: 1024); pdf.scaleBy(x: 1, y: -1)
+drawSymbol(pdf); pdf.endPDFPage(); pdf.closePDF()
+print("Rendered the Dock icon at every macOS size and the vector interface mark.")

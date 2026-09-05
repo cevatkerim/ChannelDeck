@@ -37,7 +37,10 @@ struct ChannelLogoView: View {
             }
         }
         .frame(width: size, height: size)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: size * 0.22))
+        .background(loadedLogo == nil ? ChannelDeckStyle.accentSoft : Color.white, in: RoundedRectangle(cornerRadius: size * 0.25))
+        .overlay {
+            RoundedRectangle(cornerRadius: size * 0.25).strokeBorder(ChannelDeckStyle.line.opacity(0.6), lineWidth: 0.5)
+        }
         .accessibilityHidden(true)
         .task(id: loadIdentifier) {
             loadedLogo = nil
@@ -73,7 +76,7 @@ struct ChannelLogoView: View {
     private var fallback: some View {
         Text(name.prefix(2).uppercased())
             .font(.system(size: size * 0.27, weight: .semibold, design: .rounded))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ChannelDeckStyle.accent)
     }
 }
 

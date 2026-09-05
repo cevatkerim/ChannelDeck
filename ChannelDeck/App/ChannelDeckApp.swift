@@ -7,6 +7,7 @@ import SwiftUI
 struct ChannelDeckApp: App {
     private let modelContainer: ModelContainer
     @State private var appModel: AppModel
+    @AppStorage("channelDeck.appearance") private var appearance: DeckAppearance = .system
 
     init() {
         do {
@@ -26,9 +27,11 @@ struct ChannelDeckApp: App {
         WindowGroup {
             ContentView()
                 .environment(appModel)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .modelContainer(modelContainer)
-        .defaultSize(width: 1280, height: 780)
+        .defaultSize(width: 1380, height: 860)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             ChannelDeckCommands(appModel: appModel)
             SidebarCommands()
@@ -37,6 +40,7 @@ struct ChannelDeckApp: App {
         Settings {
             SettingsView()
                 .environment(appModel)
+                .preferredColorScheme(appearance.colorScheme)
         }
         .modelContainer(modelContainer)
     }
@@ -65,6 +69,15 @@ private struct ChannelDeckCommands: Commands {
             .disabled(appModel.sourceID(for: appModel.sidebarSelection) == nil)
         }
 
+        CommandMenu("Library") {
+            Button("Favorites") { appModel.searchText = ""; appModel.sidebarSelection = .favorites }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("TV Guide") { appModel.searchText = ""; appModel.sidebarSelection = .guide }
+                .keyboardShortcut("2", modifiers: .command)
+            Button("Recordings") { appModel.searchText = ""; appModel.sidebarSelection = .recordings }
+                .keyboardShortcut("3", modifiers: .command)
+        }
+
         CommandMenu("Playback") {
             Button("Play or Pause") {
                 appModel.playerController.togglePlayback()
@@ -73,15 +86,22 @@ private struct ChannelDeckCommands: Commands {
             .disabled(appModel.selectedChannel == nil && appModel.selectedRecording == nil)
 
             Button("Try Channel Again") {
-                appModel.playerController.retry()
+                appModel.retryPlayback()
             }
             .keyboardShortcut("r", modifiers: [.command, .option])
             .disabled(appModel.selectedChannel == nil && appModel.selectedRecording == nil)
 
             Divider()
 
+            Button(appModel.bufferRecordingPhase.isEnabled ? "Stop Recording" : "Record") {
+                appModel.setSaveBufferEnabled(!appModel.bufferRecordingPhase.isEnabled)
+            }
+            .keyboardShortcut("r", modifiers: [.command, .shift])
+            .disabled(appModel.bufferRecordingPhase.isBusy
+                || (!appModel.playerController.liveDVRState.isAvailable && !appModel.bufferRecordingPhase.isEnabled))
+
             Button("Stop") {
-                appModel.playerController.stop()
+                appModel.stopPlayback()
             }
             .keyboardShortcut(".", modifiers: [.command])
             .disabled(appModel.selectedChannel == nil && appModel.selectedRecording == nil)
