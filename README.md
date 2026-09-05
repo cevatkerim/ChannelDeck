@@ -71,10 +71,7 @@ Screenshots show the current source build using an existing library. Channel log
 
 ## Install a test build
 
-Download the DMG and checksums from the [v0.1.0 testing release](https://github.com/cevatkerim/ChannelDeck/releases/tag/v0.1.0). Release access follows the repository's visibility and permissions.
-
-> [!IMPORTANT]
-> The v0.1.0 package predates the redesign and TV guide shown above. [Build the current source](#build-from-source) for the latest interface and guide search improvements.
+Download the DMG and checksums from the [v0.2.0 testing release](https://github.com/cevatkerim/ChannelDeck/releases/tag/v0.2.0). This release includes the redesign, new identity, TV guide, and guide search improvements shown above. Release access follows the repository's visibility and permissions.
 
 The DMG packaging workflow targets **Apple Silicon Macs running macOS 15 or newer**. It includes FFmpeg, so installing the packaged app does not require Xcode or Homebrew. This is an **unsigned, unnotarized testing build**; macOS will warn that Apple cannot verify its developer.
 
