@@ -296,6 +296,44 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         await transcoder.stop()
     }
 
+    func testVideoOnlyInputAutomaticallyRestartsWithSilentAAC() async throws {
+        let root = try makeTemporaryDirectory(named: "video-only-fallback")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.automaticSilentAudioFallbackFakeFFmpeg, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable),
+            startupTimeout: .seconds(3),
+            temporaryRoot: root,
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+
+        let session = try await transcoder.start(relayURL: Self.relayURL)
+        let master = try String(contentsOf: session.playlistURL, encoding: .utf8)
+
+        XCTAssertTrue(master.contains("CODECS=\"avc1.640028,mp4a.40.2\""))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: session.playlistURL.path))
+        await transcoder.stop()
+    }
+
+    func testMissingSourceAudioClassifierDoesNotMistakeMissingVideo() {
+        XCTAssertTrue(
+            FFmpegHLSAudioTranscoder.sourceAudioStreamIsMissing(
+                fromFFmpegDiagnostics: "Stream map '0:a:0' matches no streams."
+            )
+        )
+        XCTAssertFalse(
+            FFmpegHLSAudioTranscoder.sourceAudioStreamIsMissing(
+                fromFFmpegDiagnostics: "Stream map '0:v:0' matches no streams."
+            )
+        )
+        XCTAssertFalse(
+            FFmpegHLSAudioTranscoder.sourceAudioStreamIsMissing(
+                fromFFmpegDiagnostics: "Stream map 0:a:0 matches no streams. Stream map 0:v:0 matches no streams."
+            )
+        )
+    }
+
     func testInputVideoClassificationRequiresFallbackForHEVCAndOversizedH264() {
         let hevc = "Stream #0:0: Video: hevc (Main 10), yuv420p10le, 3840x2160, 50 fps"
         let h264 = "Stream #0:0: Video: h264 (High), yuv420p, 1920x1080, 25 fps"
@@ -652,6 +690,20 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             ;;
         *)
             exit 64
+            ;;
+    esac
+    """# + "\n" + successfulOutputScript
+
+    private static let automaticSilentAudioFallbackFakeFFmpeg = #"""
+    #!/bin/sh
+    arguments=" $* "
+    case "$arguments" in
+        *" -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=48000 "*)
+            case "$arguments" in *" -map 1:a:0 "*) ;; *) exit 64 ;; esac
+            ;;
+        *)
+            printf "Stream map '0:a:0' matches no streams.\n" >&2
+            exit 1
             ;;
     esac
     """# + "\n" + successfulOutputScript

@@ -419,8 +419,14 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         case h264VideoToolbox
     }
 
+    private enum AudioMode: Sendable, Equatable {
+        case source
+        case synthesizedSilence
+    }
+
     private enum TranscodeAttemptError: Error {
         case videoRequiresTranscode
+        case audioRequiresSynthesis
     }
 
     private enum MPEGTSInputPipeError: Error, Sendable {
@@ -689,21 +695,37 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private func startWithAutomaticVideoCompatibility(
         input: ProcessInput
     ) async throws -> FFmpegHLSAudioTranscodeSession {
-        do {
-            return try await startAttempt(input: input, videoMode: .streamCopy)
-        } catch TranscodeAttemptError.videoRequiresTranscode {
-            try Task.checkCancellation()
-            return try await startAttempt(input: input, videoMode: .h264VideoToolbox)
-        } catch let error as FFmpegHLSAudioTranscoderError
-            where error == .processFailed(.incompatibleVideoCodec) {
-            try Task.checkCancellation()
-            return try await startAttempt(input: input, videoMode: .h264VideoToolbox)
+        var videoMode = VideoMode.streamCopy
+        var audioMode = AudioMode.source
+
+        while true {
+            do {
+                return try await startAttempt(
+                    input: input,
+                    videoMode: videoMode,
+                    audioMode: audioMode
+                )
+            } catch TranscodeAttemptError.videoRequiresTranscode
+                where videoMode == .streamCopy {
+                try Task.checkCancellation()
+                videoMode = .h264VideoToolbox
+            } catch TranscodeAttemptError.audioRequiresSynthesis
+                where audioMode == .source {
+                try Task.checkCancellation()
+                audioMode = .synthesizedSilence
+            } catch let error as FFmpegHLSAudioTranscoderError
+                where error == .processFailed(.incompatibleVideoCodec)
+                    && videoMode == .streamCopy {
+                try Task.checkCancellation()
+                videoMode = .h264VideoToolbox
+            }
         }
     }
 
     private func startAttempt(
         input: ProcessInput,
-        videoMode: VideoMode
+        videoMode: VideoMode,
+        audioMode: AudioMode
     ) async throws -> FFmpegHLSAudioTranscodeSession {
         guard let executableURL = locator.executableURL() else {
             throw FFmpegHLSAudioTranscoderError.ffmpegNotFound
@@ -761,6 +783,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         process.arguments = Self.arguments(
             input: input,
             videoMode: videoMode,
+            audioMode: audioMode,
             sourceSegmentTemplate: sourceSegmentTemplate,
             sourceMediaPlaylist: sourceMediaPlaylistURL.path,
             segmentTemplate: segmentTemplate,
@@ -813,7 +836,11 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
         do {
             return try await withTaskCancellationHandler {
-                try await waitUntilReady(id: id, videoMode: videoMode)
+                try await waitUntilReady(
+                    id: id,
+                    videoMode: videoMode,
+                    audioMode: audioMode
+                )
             } onCancel: {
                 Task { await self.cancel(id: id) }
             }
@@ -1101,7 +1128,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
     private func waitUntilReady(
         id: UUID,
-        videoMode: VideoMode
+        videoMode: VideoMode,
+        audioMode: AudioMode
     ) async throws -> FFmpegHLSAudioTranscodeSession {
         let deadline = clock.now.advanced(by: startupTimeout)
         let streamCopyProbeDeadline = clock.now.advanced(by: streamCopyProbeTimeout)
@@ -1121,6 +1149,13 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             }
             guard active.ownedProcess.process.isRunning else {
                 let diagnostics = active.ownedProcess.finishDiagnostics()
+                if audioMode == .source,
+                   Self.sourceAudioStreamIsMissing(fromFFmpegDiagnostics: diagnostics) {
+                    // A handful of valid IPTV services are intentionally
+                    // video-only. AirPlay still expects an A/V rendition, so
+                    // retry the same video with a local silent AAC source.
+                    throw TranscodeAttemptError.audioRequiresSynthesis
+                }
                 throw FFmpegHLSAudioTranscoderError.processFailed(
                     Self.failureReason(for: diagnostics)
                 )
@@ -1222,6 +1257,17 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         return .unexpectedExit
     }
 
+    static func sourceAudioStreamIsMissing(fromFFmpegDiagnostics diagnostics: String) -> Bool {
+        let value = diagnostics.lowercased()
+        let audioMapMissing = value.contains("stream map 0:a:0 matches no streams")
+            || value.contains("stream map '0:a:0' matches no streams")
+            || value.contains("stream map \"0:a:0\" matches no streams")
+        let videoMapMissing = value.contains("stream map 0:v:0 matches no streams")
+            || value.contains("stream map '0:v:0' matches no streams")
+            || value.contains("stream map \"0:v:0\" matches no streams")
+        return audioMapMissing && !videoMapMissing
+    }
+
     private func cancel(id: UUID) async {
         guard let active, active.id == id else { return }
         recordingMonitorTask?.cancel()
@@ -1286,6 +1332,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private static func arguments(
         input: ProcessInput,
         videoMode: VideoMode,
+        audioMode: AudioMode,
         sourceSegmentTemplate: String,
         sourceMediaPlaylist: String,
         segmentTemplate: String,
@@ -1294,7 +1341,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         let hardwareInputArguments = videoMode == .h264VideoToolbox
             ? ["-hwaccel", "videotoolbox"]
             : []
-        let inputArguments: [String]
+        var inputArguments: [String]
         switch input {
         case let .relay(relayURL):
             inputArguments = ["-re"] + hardwareInputArguments + ["-i", relayURL.absoluteString]
@@ -1303,6 +1350,19 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                 + hardwareInputArguments
                 + ["-i", "pipe:0"]
         }
+        let audioInputIndex: Int
+        switch audioMode {
+        case .source:
+            audioInputIndex = 0
+        case .synthesizedSilence:
+            audioInputIndex = 1
+            inputArguments += [
+                "-re",
+                "-f", "lavfi",
+                "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+            ]
+        }
+        let audioMap = "\(audioInputIndex):a:0"
 
         let videoArguments: [String]
         switch videoMode {
@@ -1345,7 +1405,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             // opening a second provider connection. AAC audio keeps the saved
             // MPEG-TS file broadly playable by AVFoundation.
             "-map", "0:v:0",
-            "-map", "0:a:0",
+            "-map", audioMap,
             "-sn",
             "-dn",
             "-c:v", "copy",
@@ -1365,7 +1425,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
 
         let compatibilityOutputArguments = [
             "-map", "0:v:0",
-            "-map", "0:a:0",
+            "-map", audioMap,
             "-sn",
             "-dn",
         ] + videoArguments + [

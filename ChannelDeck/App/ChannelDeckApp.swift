@@ -17,7 +17,7 @@ struct ChannelDeckApp: App {
             fatalError("ChannelDeck could not create its local library: \(error.localizedDescription)")
         }
 
-        if let applicationIcon = NSImage(named: "ChannelDeckMark") {
+        if let applicationIcon = ChannelDeckBrand.applicationIcon {
             NSApplication.shared.applicationIconImage = applicationIcon
         }
     }
@@ -46,6 +46,12 @@ private struct ChannelDeckCommands: Commands {
     let appModel: AppModel
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About ChannelDeck") {
+                ChannelDeckBrand.showAboutPanel()
+            }
+        }
+
         CommandGroup(after: .newItem) {
             Button("Add Playlist…") {
                 appModel.beginAddingSource()
@@ -80,5 +86,52 @@ private struct ChannelDeckCommands: Commands {
             .keyboardShortcut(".", modifiers: [.command])
             .disabled(appModel.selectedChannel == nil && appModel.selectedRecording == nil)
         }
+    }
+}
+
+@MainActor
+private enum ChannelDeckBrand {
+    static let repositoryURL = URL(string: "https://github.com/cevatkerim/ChannelDeck")!
+
+    static var applicationIcon: NSImage? {
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL) {
+            return icon
+        }
+        return NSImage(named: "ChannelDeckMark")
+    }
+
+    static func showAboutPanel() {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let credits = NSMutableAttributedString(
+            string: "Native IPTV playback, live buffering, recording, and secure AirPlay.\n",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: paragraph,
+            ]
+        )
+        credits.append(
+            NSAttributedString(
+                string: "View ChannelDeck on GitHub",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                    .foregroundColor: NSColor.linkColor,
+                    .link: repositoryURL,
+                    .paragraphStyle: paragraph,
+                ]
+            )
+        )
+
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
+            .applicationName: "ChannelDeck",
+            .credits: credits,
+        ]
+        if let applicationIcon {
+            options[.applicationIcon] = applicationIcon
+        }
+        NSApplication.shared.orderFrontStandardAboutPanel(options: options)
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }

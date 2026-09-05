@@ -29,6 +29,10 @@ struct ContentView: View {
             reduceMotion ? nil : .easeOut(duration: 0.22),
             value: appModel.isBootstrapping
         )
+        .toolbarVisibility(
+            appModel.isBootstrapping ? .hidden : .visible,
+            for: .windowToolbar
+        )
         .frame(
             minWidth: ChannelDeckStyle.windowMinimumSize.width,
             minHeight: ChannelDeckStyle.windowMinimumSize.height
