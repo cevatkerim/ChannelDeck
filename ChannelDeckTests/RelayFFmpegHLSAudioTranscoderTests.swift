@@ -8,6 +8,19 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         XCTAssertLessThan(FFmpegHLSAudioTranscoder.defaultStartupTimeout, .seconds(45))
     }
 
+    func testRollingBufferRetainsFiveMinutesPlusOneMinuteDeletionGrace() {
+        XCTAssertEqual(
+            FFmpegHLSAudioTranscoder.hlsSegmentDurationSeconds
+                * FFmpegHLSAudioTranscoder.liveBufferSegmentCount,
+            5 * 60
+        )
+        XCTAssertEqual(
+            FFmpegHLSAudioTranscoder.hlsSegmentDurationSeconds
+                * FFmpegHLSAudioTranscoder.liveBufferDeleteThreshold,
+            60
+        )
+    }
+
     func testLocatorUsesTheFirstExecutableCandidate() throws {
         let root = try makeTemporaryDirectory(named: "locator")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -448,8 +461,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     case "$arguments" in *" -ar 48000 "*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -b:a 160k "*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -hls_time 4 "*) ;; *) exit 64 ;; esac
-    case "$arguments" in *" -hls_list_size 12 "*) ;; *) exit 64 ;; esac
-    case "$arguments" in *" -hls_delete_threshold 24 "*) ;; *) exit 64 ;; esac
+    case "$arguments" in *" -hls_list_size 75 "*) ;; *) exit 64 ;; esac
+    case "$arguments" in *" -hls_delete_threshold 15 "*) ;; *) exit 64 ;; esac
     case "$arguments" in *" -hls_allow_cache "*) exit 64 ;; esac
     """# + "\n" + successfulOutputScript
 

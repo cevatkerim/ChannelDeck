@@ -80,6 +80,10 @@ struct PlayerDetailView: View {
             .frame(maxWidth: .infinity)
             .channelDeckPanel()
 
+            if appModel.playerController.liveDVRState.isAvailable {
+                LiveDVRControls(controller: appModel.playerController)
+            }
+
             if appModel.playerController.isExternalPlaybackActive {
                 Label("AirPlay Active", systemImage: "airplayvideo")
                     .font(.callout.weight(.medium))
@@ -162,5 +166,90 @@ struct PlayerDetailView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+}
+
+private struct LiveDVRControls: View {
+    let controller: PlayerController
+
+    @State private var scrubberValue = 0.0
+    @State private var isScrubbing = false
+
+    private var timeline: LiveDVRState { controller.liveDVRState }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                Label("Live Buffer", systemImage: "clock.arrow.circlepath")
+                    .font(.callout.weight(.semibold))
+
+                Spacer()
+
+                Text(timeline.isAtLiveEdge
+                    ? "At live edge"
+                    : "\(formatted(timeline.secondsBehindLive)) behind")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    controller.jumpToLive()
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(timeline.isAtLiveEdge ? Color.red : Color.secondary)
+                            .frame(width: 8, height: 8)
+                        Text(timeline.isAtLiveEdge ? "Live" : "Go Live")
+                    }
+                    .frame(minHeight: 28)
+                }
+                .buttonStyle(.bordered)
+                .disabled(timeline.isAtLiveEdge)
+                .accessibilityHint("Jump to the newest available point in the broadcast")
+            }
+
+            HStack(spacing: 12) {
+                Text("−\(formatted(timeline.windowDuration))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 44, alignment: .trailing)
+
+                Slider(
+                    value: $scrubberValue,
+                    in: 0 ... max(timeline.windowDuration, 1),
+                    onEditingChanged: { editing in
+                        isScrubbing = editing
+                        if !editing {
+                            controller.seek(toBufferedOffset: scrubberValue)
+                        }
+                    }
+                )
+                .accessibilityLabel("Live broadcast position")
+                .accessibilityValue(timeline.isAtLiveEdge
+                    ? "Live"
+                    : "\(formatted(timeline.secondsBehindLive)) behind live")
+
+                Text(timeline.isAtLiveEdge
+                    ? "Live"
+                    : "−\(formatted(timeline.secondsBehindLive))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(timeline.isAtLiveEdge ? Color.red : Color.secondary)
+                    .frame(minWidth: 44, alignment: .leading)
+            }
+        }
+        .padding(14)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
+        .onAppear { synchronizeScrubber() }
+        .onChange(of: timeline.position) { _, _ in synchronizeScrubber() }
+        .onChange(of: timeline.windowDuration) { _, _ in synchronizeScrubber() }
+    }
+
+    private func synchronizeScrubber() {
+        guard !isScrubbing else { return }
+        scrubberValue = min(max(timeline.position, 0), timeline.windowDuration)
+    }
+
+    private func formatted(_ seconds: TimeInterval) -> String {
+        let totalSeconds = max(0, Int(seconds.rounded(.down)))
+        return String(format: "%d:%02d", totalSeconds / 60, totalSeconds % 60)
     }
 }

@@ -126,6 +126,42 @@ public enum AirPlayVideoCompatibility: Equatable, Sendable {
     case indeterminate
 }
 
+/// A URL-free snapshot of the current live HLS seekable window. Position zero
+/// is the oldest retained point and `windowDuration` is the live edge.
+struct LiveDVRState: Equatable, Sendable {
+    static let unavailable = LiveDVRState(
+        windowDuration: 0,
+        position: 0,
+        secondsBehindLive: 0
+    )
+
+    let windowDuration: TimeInterval
+    let position: TimeInterval
+    let secondsBehindLive: TimeInterval
+
+    var isAvailable: Bool { windowDuration >= 8 }
+    var isAtLiveEdge: Bool { isAvailable && secondsBehindLive <= 3 }
+
+    static func make(
+        rangeStart: TimeInterval,
+        rangeDuration: TimeInterval,
+        currentTime: TimeInterval
+    ) -> LiveDVRState {
+        guard rangeStart.isFinite,
+              rangeDuration.isFinite,
+              currentTime.isFinite,
+              rangeDuration > 0 else {
+            return .unavailable
+        }
+        let position = min(max(currentTime - rangeStart, 0), rangeDuration)
+        return LiveDVRState(
+            windowDuration: rangeDuration,
+            position: position,
+            secondsBehindLive: max(0, rangeDuration - position)
+        )
+    }
+}
+
 /// Owns the application's single native player and translates AVFoundation's
 /// KVO state into a small, URL-free state model suitable for SwiftUI.
 @MainActor
@@ -138,6 +174,7 @@ public final class PlayerController {
     public private(set) var isExternalPlaybackActive = false
     public private(set) var airPlayVideoCompatibility: AirPlayVideoCompatibility = .unavailable
     public private(set) var currentStreamUsesInsecureTransport = false
+    private(set) var liveDVRState: LiveDVRState = .unavailable
 
     /// A privacy-safe explanation for the common cases where local playback
     /// works but direct AirPlay Video cannot complete its receiver handoff.
@@ -158,6 +195,7 @@ public final class PlayerController {
     @ObservationIgnored private var itemObservations: [NSKeyValueObservation] = []
     @ObservationIgnored private var itemFailureObserver: (any NSObjectProtocol)?
     @ObservationIgnored private var airPlayCompatibilityTask: Task<Void, Never>?
+    @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var userPaused = false
 
     public init(player: AVPlayer = AVPlayer()) {
@@ -165,6 +203,7 @@ public final class PlayerController {
         player.allowsExternalPlayback = true
         player.automaticallyWaitsToMinimizeStalling = true
         observePlayer()
+        observePlaybackTime()
     }
 
     /// Replaces the current channel immediately. The URL is retained privately
@@ -195,6 +234,37 @@ public final class PlayerController {
         }
     }
 
+    /// Seeks to an offset within the current rolling live window. The window
+    /// is resolved again at the moment of the seek because its start advances
+    /// continuously while the user is dragging the scrubber.
+    func seek(toBufferedOffset requestedOffset: TimeInterval) {
+        guard let range = currentSeekableRange() else { return }
+        let duration = range.duration.seconds
+        guard duration.isFinite, duration > 0 else { return }
+        let offset = min(max(requestedOffset, 0), duration)
+        let target = CMTimeAdd(
+            range.start,
+            CMTime(seconds: offset, preferredTimescale: 600)
+        )
+        player.seek(
+            to: target,
+            toleranceBefore: .zero,
+            toleranceAfter: CMTime(seconds: 0.25, preferredTimescale: 600)
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshLiveDVRState()
+            }
+        }
+    }
+
+    /// Moves close to (rather than beyond) the current live edge and resumes.
+    func jumpToLive() {
+        guard let range = currentSeekableRange() else { return }
+        userPaused = false
+        seek(toBufferedOffset: max(0, range.duration.seconds - 0.5))
+        player.play()
+    }
+
     /// Recreates the current player item without exposing its URL to callers or
     /// incorporating it into an error message.
     public func retry() {
@@ -213,6 +283,7 @@ public final class PlayerController {
         isExternalPlaybackActive = false
         airPlayVideoCompatibility = .unavailable
         currentStreamUsesInsecureTransport = false
+        liveDVRState = .unavailable
         userPaused = false
         state = .idle
     }
@@ -227,6 +298,7 @@ public final class PlayerController {
         currentRequest = request
         currentChannelName = request.channelName
         currentStreamUsesInsecureTransport = request.url.scheme?.lowercased() == "http"
+        liveDVRState = .unavailable
         userPaused = false
         state = .preparing
 
@@ -272,6 +344,9 @@ public final class PlayerController {
             },
             item.observe(\.isPlaybackBufferFull, options: [.initial, .new]) { _, _ in
                 notifyChange()
+            },
+            item.observe(\.seekableTimeRanges, options: [.initial, .new]) { _, _ in
+                notifyChange()
             }
         ]
 
@@ -302,6 +377,40 @@ public final class PlayerController {
         isExternalPlaybackActive = player.isExternalPlaybackActive
     }
 
+    private func observePlaybackTime() {
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshLiveDVRState()
+            }
+        }
+    }
+
+    private func currentSeekableRange() -> CMTimeRange? {
+        guard let item = player.currentItem else { return nil }
+        return item.seekableTimeRanges.reversed().lazy
+            .map(\.timeRangeValue)
+            .first { range in
+                let start = range.start.seconds
+                let duration = range.duration.seconds
+                return start.isFinite && duration.isFinite && duration > 0
+            }
+    }
+
+    private func refreshLiveDVRState() {
+        guard let range = currentSeekableRange() else {
+            liveDVRState = .unavailable
+            return
+        }
+        liveDVRState = .make(
+            rangeStart: range.start.seconds,
+            rangeDuration: range.duration.seconds,
+            currentTime: player.currentTime().seconds
+        )
+    }
+
     private func evaluateAirPlayCompatibility(of asset: AVAsset, generation: UUID) {
         airPlayVideoCompatibility = .checking
         airPlayCompatibilityTask = Task { @MainActor [weak self] in
@@ -325,6 +434,7 @@ public final class PlayerController {
     }
 
     private func refreshState() {
+        refreshLiveDVRState()
         guard let item = player.currentItem else {
             state = .idle
             return

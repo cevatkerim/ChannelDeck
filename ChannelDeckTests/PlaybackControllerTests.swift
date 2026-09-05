@@ -4,6 +4,47 @@ import XCTest
 @testable import ChannelDeck
 
 final class PlaybackControllerTests: XCTestCase {
+    func testLiveDVRStateTracksPositionAndDistanceFromLiveEdge() {
+        let state = LiveDVRState.make(
+            rangeStart: 100,
+            rangeDuration: 300,
+            currentTime: 340
+        )
+
+        XCTAssertTrue(state.isAvailable)
+        XCTAssertEqual(state.windowDuration, 300)
+        XCTAssertEqual(state.position, 240)
+        XCTAssertEqual(state.secondsBehindLive, 60)
+        XCTAssertFalse(state.isAtLiveEdge)
+    }
+
+    func testLiveDVRStateClampsToWindowAndRecognizesLiveEdge() {
+        let beforeWindow = LiveDVRState.make(
+            rangeStart: 100,
+            rangeDuration: 300,
+            currentTime: 50
+        )
+        let live = LiveDVRState.make(
+            rangeStart: 100,
+            rangeDuration: 300,
+            currentTime: 399
+        )
+
+        XCTAssertEqual(beforeWindow.position, 0)
+        XCTAssertEqual(beforeWindow.secondsBehindLive, 300)
+        XCTAssertEqual(live.position, 299)
+        XCTAssertEqual(live.secondsBehindLive, 1)
+        XCTAssertTrue(live.isAtLiveEdge)
+        XCTAssertEqual(
+            LiveDVRState.make(
+                rangeStart: .nan,
+                rangeDuration: 300,
+                currentTime: 100
+            ),
+            .unavailable
+        )
+    }
+
     @MainActor
     func testDismantlingRoutePickerPreservesSharedPlayerBinding() {
         let player = AVPlayer()

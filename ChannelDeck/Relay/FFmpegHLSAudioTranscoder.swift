@@ -360,6 +360,9 @@ enum FFmpegHLSAudioTranscoderError: Error, Equatable, LocalizedError, Sendable {
 /// HTTPS relay URL; provider URLs must never cross this boundary.
 actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     static let defaultStartupTimeout: Duration = .seconds(40)
+    static let hlsSegmentDurationSeconds = 4
+    static let liveBufferSegmentCount = 75
+    static let liveBufferDeleteThreshold = 15
 
     private enum VideoMode: Sendable, Equatable {
         case streamCopy
@@ -1003,9 +1006,13 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             "-var_stream_map", "v:0,a:0",
             "-f", "hls",
             "-hls_segment_type", "mpegts",
-            "-hls_time", "4",
-            "-hls_list_size", "12",
-            "-hls_delete_threshold", "24",
+            "-hls_time", String(hlsSegmentDurationSeconds),
+            // Seventy-five four-second entries expose five minutes of live
+            // history to AVPlayer. A further minute remains on disk so an
+            // AirPlay receiver that is finishing an older segment does not
+            // race deletion as the playlist window advances.
+            "-hls_list_size", String(liveBufferSegmentCount),
+            "-hls_delete_threshold", String(liveBufferDeleteThreshold),
             "-hls_flags", "delete_segments+independent_segments+temp_file+omit_endlist+program_date_time",
             // This remains internal: stream-copy inputs often make FFmpeg emit
             // an unusably small bandwidth. ChannelDeck publishes index.m3u8.
