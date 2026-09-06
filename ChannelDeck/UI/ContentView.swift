@@ -9,27 +9,25 @@ struct ContentView: View {
         @Bindable var appModel = appModel
 
         ZStack {
-            Group {
-                if appModel.sidebarSelection == .guide {
-                    NavigationSplitView(columnVisibility: $columnVisibility) {
-                        SidebarView()
-                    } detail: {
-                        ProgrammeGuideView()
-                    }
-                    .navigationSplitViewStyle(.balanced)
-                } else {
-                    NavigationSplitView(columnVisibility: $columnVisibility) {
-                        SidebarView()
-                    } content: {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SidebarView()
+            } detail: {
+                PlayerWorkspace(isShowingGuide: appModel.sidebarSelection == .guide) {
+                    HSplitView {
                         ChannelBrowserView()
-                    } detail: {
+                            .frame(minWidth: 290, idealWidth: 340, maxWidth: 440)
                         PlayerDetailView()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .navigationSplitViewStyle(.balanced)
+                } guide: {
+                    ProgrammeGuideView()
                 }
             }
+            .navigationSplitViewStyle(.balanced)
             .tint(ChannelDeckStyle.accent)
             .opacity(appModel.isBootstrapping ? 0 : 1)
+            .allowsHitTesting(!appModel.isBootstrapping)
+            .disabled(appModel.isBootstrapping)
             .accessibilityHidden(appModel.isBootstrapping)
 
             if appModel.isBootstrapping {
@@ -77,6 +75,32 @@ struct ContentView: View {
         }
         .task {
             await appModel.bootstrap()
+        }
+    }
+}
+
+/// The guide covers the workspace without dismantling its AVPlayerView. A new
+/// rendering surface attached to an already-playing live item can remain black
+/// until the next seek. Keeping the surface mounted also preserves paused frames,
+/// the live buffer, and the split/sidebar state; navigation never touches playback.
+struct PlayerWorkspace<PlayerContent: View, GuideContent: View>: View {
+    let isShowingGuide: Bool
+    @ViewBuilder var player: () -> PlayerContent
+    @ViewBuilder var guide: () -> GuideContent
+
+    var body: some View {
+        ZStack {
+            player()
+                .opacity(isShowingGuide ? 0 : 1)
+                .allowsHitTesting(!isShowingGuide)
+                .disabled(isShowingGuide)
+                .accessibilityHidden(isShowingGuide)
+
+            if isShowingGuide {
+                guide()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(ChannelDeckStyle.canvas)
+            }
         }
     }
 }

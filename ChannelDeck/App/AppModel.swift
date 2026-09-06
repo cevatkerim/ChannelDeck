@@ -468,7 +468,7 @@ final class AppModel {
     }
 
     var isGlobalChannelSearchActive: Bool {
-        sidebarSelection != .recordings
+        sidebarSelection != .recordings && sidebarSelection != .guide
             && !ChannelSearchIndex.normalize(searchText).isEmpty
     }
 
@@ -1203,7 +1203,7 @@ final class AppModel {
             else { return }
             let parsed = try await parsePlaylist(data, baseURL: sourceURL)
             if channels.contains(where: { $0.sourceID == sourceID }) {
-                hydrateRuntimePlaylist(parsed, for: sourceID)
+                try await hydrateRuntimePlaylist(parsed, for: sourceID)
             } else {
                 try apply(parsed, to: sourceID)
             }
@@ -1612,16 +1612,29 @@ final class AppModel {
         }
     }
 
-    private func hydrateRuntimePlaylist(_ playlist: ParsedPlaylist, for sourceID: UUID) {
-        runtimePlaylists[sourceID] = playlist
-        let channelIDs = Set(channels.lazy.filter { $0.sourceID == sourceID }.map(\.stableID))
-        streamURLs = streamURLs.filter { !channelIDs.contains($0.key) }
-
-        for parsed in playlist.channels {
-            let stableID = parsed.stableKey(sourceID: sourceID).rawValue
-            guard channelIDs.contains(stableID), isAllowedMediaURL(parsed.streamURL) else { continue }
-            streamURLs[stableID] = parsed.streamURL
+    private func hydrateRuntimePlaylist(_ playlist: ParsedPlaylist, for sourceID: UUID) async throws {
+        // Stable-key Unicode normalization over tens of thousands of cached
+        // entries is CPU work, not UI work. Only immutable values leave this actor.
+        var channelIDs = Set<String>()
+        let sourceChannels = channelsBySourceID[sourceID] ?? []
+        for (offset, channel) in sourceChannels.enumerated() {
+            channelIDs.insert(channel.stableID)
+            if offset.isMultiple(of: 256) { await Task.yield() }
         }
+        let knownIDs = channelIDs
+        let worker = Task.detached(priority: .userInitiated) {
+            try RuntimeStreamIndex.build(playlist, sourceID: sourceID, channelIDs: knownIDs)
+        }
+        let restoredURLs = try await withTaskCancellationHandler {
+            try await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
+        try Task.checkCancellation()
+        guard source(withID: sourceID) != nil else { return }
+        runtimePlaylists[sourceID] = playlist
+        streamURLs = streamURLs.filter { !channelIDs.contains($0.key) }
+        streamURLs.merge(restoredURLs, uniquingKeysWith: { _, restored in restored })
     }
 
     private func programmesStored(for sourceID: UUID) throws -> [ProgrammeRecord] {

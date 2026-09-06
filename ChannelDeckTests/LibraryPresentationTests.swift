@@ -139,6 +139,8 @@ final class PlaybackPresentationTests: XCTestCase {
         let model = try makeModel()
         model.channels = [channel(id: "one"), channel(id: "two")]
         model.sidebarSelection = .guide
+        model.searchText = "one"
+        XCTAssertFalse(model.isGlobalChannelSearchActive, "The retained browser must not handle the guide's search")
         XCTAssertTrue(model.filteredChannels.isEmpty)
         XCTAssertEqual(model.channels.count, 2, "The guide still owns the complete catalogue")
     }

@@ -43,6 +43,25 @@ struct ParsedPlaylist: Equatable, Sendable {
     let channels: [ParsedChannel]
 }
 
+/// Reconstructs the in-memory stream lookup from an encrypted playlist cache.
+/// No persisted models (or observation callbacks) are needed on the worker task.
+enum RuntimeStreamIndex {
+    static func build(_ playlist: ParsedPlaylist, sourceID: UUID, channelIDs: Set<String>) throws -> [String: URL] {
+        var urls: [String: URL] = [:]
+        urls.reserveCapacity(channelIDs.count)
+        for (offset, channel) in playlist.channels.enumerated() {
+            if offset.isMultiple(of: 128) { try Task.checkCancellation() }
+            let url = channel.streamURL
+            guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+                  url.host?.isEmpty == false else { continue }
+            let key = channel.stableKey(sourceID: sourceID).rawValue
+            guard channelIDs.contains(key) else { continue }
+            urls[key] = url
+        }
+        return urls
+    }
+}
+
 struct ParsedChannel: Equatable, Sendable {
     let tvgID: String?
     let tvgName: String?

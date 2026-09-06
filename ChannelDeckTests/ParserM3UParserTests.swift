@@ -2,6 +2,41 @@ import XCTest
 @testable import ChannelDeck
 
 final class ParserM3UParserTests: XCTestCase {
+    func testRuntimeStreamIndexRestoresOnlyKnownChannelsAndAllowedTransports() throws {
+        let source = UUID()
+        let entries = ["https://media.example/live.m3u8", "http://media.example/live.ts",
+                       "file:///tmp/private.ts", "ftp://media.example/live.ts", "https://media.example/removed.ts"]
+            .enumerated().map { offset, address in
+                ParsedChannel(tvgID: nil, tvgName: nil, name: "Télévision \(offset)", group: "World",
+                              logoURL: nil, streamURL: URL(string: address)!, order: offset, duration: -1)
+            }
+        let knownIDs = Set(entries.dropLast().map { $0.stableKey(sourceID: source).rawValue })
+        let playlist = ParsedPlaylist(title: nil, epgURLs: [], channels: entries)
+        let index = try RuntimeStreamIndex.build(playlist, sourceID: source, channelIDs: knownIDs)
+        XCTAssertEqual(index.count, 2)
+        for entry in entries.prefix(2) {
+            XCTAssertEqual(index[entry.stableKey(sourceID: source).rawValue], entry.streamURL)
+        }
+        XCTAssertTrue(try RuntimeStreamIndex.build(playlist, sourceID: UUID(), channelIDs: knownIDs).isEmpty)
+    }
+
+    func testRuntimeStreamIndexHonorsCancellation() async {
+        let entry = ParsedChannel(tvgID: nil, tvgName: nil, name: "One", group: nil,
+                                  logoURL: nil, streamURL: URL(string: "https://media.example/live.ts")!,
+                                  order: 0, duration: -1)
+        let task = Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try RuntimeStreamIndex.build(ParsedPlaylist(title: nil, epgURLs: [], channels: [entry]),
+                                               sourceID: UUID(), channelIDs: [])
+        }
+        do {
+            _ = try await task.value
+            XCTFail("A cancelled restore should stop its CPU work")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+    }
+
     func testParsesExtendedMetadataUnicodeAndRelativeURLs() throws {
         let playlist = """
         \u{feff}#EXTM3U playlist-name="Ev & Spor" url-tvg="../epg/guide.xml, https://guide.example/epg.xml"

@@ -33,7 +33,10 @@ struct ChannelBrowserView: View {
                 } else if filteredChannels.isEmpty {
                     channelEmptyState
                 } else {
-                    List(filteredChannels, id: \.stableID, selection: $appModel.selectedChannelID) { channel in
+                    List(filteredChannels, id: \.stableID, selection: Binding(
+                        get: { appModel.selectedChannelID },
+                        set: { if appModel.sidebarSelection != .guide { appModel.selectedChannelID = $0 } }
+                    )) { channel in
                         ChannelRow(
                             channel: channel,
                             searchContext: isGlobalSearch ? appModel.searchContext(for: channel) : nil
@@ -66,6 +69,7 @@ struct ChannelBrowserView: View {
         .navigationTitle("")
         .navigationSplitViewColumnWidth(min: 290, ideal: 340, max: 440)
         .onChange(of: appModel.selectedChannelID) { _, newValue in
+            guard appModel.sidebarSelection != .guide else { return }
             guard let newValue, let channel = appModel.channel(withID: newValue) else { return }
             appModel.play(channel)
         }
@@ -77,6 +81,9 @@ struct ChannelBrowserView: View {
                 return
             }
             appModel.play(recording)
+        }
+        .onChange(of: appModel.sidebarSelection) { _, selection in
+            if selection == .guide { isSearchFocused = false }
         }
     }
 
@@ -118,7 +125,7 @@ struct ChannelBrowserView: View {
                 Button("Search", systemImage: "magnifyingglass") { isSearchFocused = true }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.plain)
-                    .keyboardShortcut("f", modifiers: .command)
+                    .keyboardShortcut(appModel.sidebarSelection == .guide ? nil : KeyboardShortcut("f", modifiers: .command))
                     .help("Search (⌘F)")
                 TextField(isRecordings ? "Search recordings" : "Search all channels", text: $appModel.searchText)
                     .textFieldStyle(.plain)

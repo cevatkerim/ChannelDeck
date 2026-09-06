@@ -1,5 +1,6 @@
 import AVFoundation
 import AVKit
+import SwiftUI
 import XCTest
 @testable import ChannelDeck
 
@@ -140,6 +141,66 @@ final class ChannelSearchIndexTests: XCTestCase {
 }
 
 final class PlaybackControllerTests: XCTestCase {
+    @MainActor
+    func testGuideRoundTripsKeepTheNativeVideoSurfaceAndItemMounted() async throws {
+        let item = AVPlayerItem(asset: AVMutableComposition())
+        let player = AVPlayer(playerItem: item)
+        player.allowsExternalPlayback = false
+        func workspace(showGuide: Bool) -> some View {
+            PlayerWorkspace(isShowingGuide: showGuide) {
+                HSplitView {
+                    Text("Channels").frame(width: 290)
+                    VStack {
+                        Text("Now playing")
+                        ScrollView {
+                            PlayerViewRepresentable(player: player)
+                                .aspectRatio(16.0 / 9.0, contentMode: .fit)
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+            } guide: {
+                Text("Programme guide")
+            }
+            .frame(width: 1100, height: 700)
+        }
+        let host = NSHostingView(rootView: workspace(showGuide: false))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 700),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { window.close(); player.replaceCurrentItem(with: nil) }
+        host.layoutSubtreeIfNeeded()
+        let surface = try XCTUnwrap(videoViews(in: host).first)
+        let originalFrame = surface.convert(surface.bounds, to: host)
+        XCTAssertGreaterThan(originalFrame.height, 300)
+        XCTAssertTrue(surface.player === player)
+
+        for showGuide in [true, false, true, false] {
+            host.rootView = workspace(showGuide: showGuide)
+            // Allow SwiftUI to commit its removal/insertion transaction. Merely
+            // examining the old hierarchy synchronously would miss dismantles.
+            try await Task.sleep(for: .milliseconds(100))
+            host.layoutSubtreeIfNeeded()
+            let currentViews = videoViews(in: host)
+            XCTAssertEqual(currentViews.count, 1)
+            XCTAssertTrue(currentViews.first === surface, "The native surface must survive guide navigation")
+            XCTAssertTrue(surface.window === window, "Keep the renderer attached, even behind the guide")
+            XCTAssertTrue(surface.player === player)
+            XCTAssertTrue(player.currentItem === item)
+            XCTAssertEqual(player.rate, 0, "Returning to video must not resume paused playback")
+            XCTAssertFalse(player.allowsExternalPlayback, "Navigation must not change the output route")
+            if !showGuide {
+                XCTAssertEqual(surface.convert(surface.bounds, to: host), originalFrame)
+            }
+        }
+    }
+
+    @MainActor
+    private func videoViews(in view: NSView) -> [AVPlayerView] {
+        (view as? AVPlayerView).map { [$0] } ?? view.subviews.flatMap { videoViews(in: $0) }
+    }
+
     func testLiveDVRStateTracksPositionAndDistanceFromLiveEdge() {
         let state = LiveDVRState.make(
             rangeStart: 100,
