@@ -2,12 +2,12 @@
 
 The first distribution target is an Apple Silicon (`arm64`) Mac running macOS 15 or newer. A self-contained DMG contains ChannelDeck and an Applications shortcut. FFmpeg is bundled with the app; the recipient does not need Homebrew, Xcode, or a separate media-tool installation.
 
-This workflow produces a testing build without a Developer ID certificate or Apple notarization. Its local ad hoc signature supports bundle integrity checks but does not identify an Apple-verified developer. The build should be described as **unsigned and unnotarized** wherever it is shared.
+This workflow produces a testing build without a Developer ID certificate or Apple notarization. Its local ad hoc signature supports bundle integrity checks but does not identify an Apple-verified developer. Describe it as an **ad hoc-signed, unnotarized testing build without Developer ID signing** wherever it is shared.
 
 ## Install the test build
 
 1. Obtain the DMG and its checksum from the person or release page distributing the build.
-2. Open `ChannelDeck-0.2.0-arm64.dmg` and drag **ChannelDeck** into **Applications**.
+2. Quit any older running copy, open `ChannelDeck-0.2.1-arm64.dmg`, and drag **ChannelDeck** into **Applications**.
 3. Eject the disk image and open ChannelDeck from Applications.
 4. If macOS blocks the app and you trust its source, open **System Settings → Privacy & Security**, find the ChannelDeck notice under Security, and choose **Open Anyway**. Depending on the macOS version, an **Open** button may appear first. Confirm the prompt and authenticate if requested.
 
@@ -28,15 +28,15 @@ bash Scripts/build_ffmpeg.sh
 
 The FFmpeg recipe creates an LGPL build from pinned FFmpeg 8.0.1 source, without GPL or nonfree components. It uses Apple system frameworks rather than Homebrew libraries. The package workflow uses a separate `.release-build/DerivedData` directory so packaging does not replace an app running from the development build directory.
 
-Expected outputs for version 0.2.0:
+Expected outputs for version 0.2.1:
 
 | Artifact | Purpose |
 | --- | --- |
-| `dist/ChannelDeck-0.2.0-arm64.dmg` | Drag-to-Applications installer |
-| `dist/ChannelDeck-0.2.0-arm64.dmg.sha256` | DMG integrity checksum |
-| `dist/ChannelDeck-0.2.0-ffmpeg-source.tar.gz` | Corresponding FFmpeg source, build recipe, and configuration |
-| `dist/ChannelDeck-0.2.0-ffmpeg-source.tar.gz.sha256` | Source archive integrity checksum |
-| `dist/ChannelDeck-0.2.0-arm64-NOTICES.txt` | Distribution notice and dependency licensing summary |
+| `dist/ChannelDeck-0.2.1-arm64.dmg` | Drag-to-Applications installer |
+| `dist/ChannelDeck-0.2.1-arm64.dmg.sha256` | DMG integrity checksum |
+| `dist/ChannelDeck-0.2.1-ffmpeg-source.tar.gz` | Corresponding FFmpeg source, build recipe, and configuration |
+| `dist/ChannelDeck-0.2.1-ffmpeg-source.tar.gz.sha256` | Source archive integrity checksum |
+| `dist/ChannelDeck-0.2.1-arm64-NOTICES.txt` | Distribution notice and dependency licensing summary |
 
 Dependency notices accompany the distribution. The packaging script refuses to overwrite an existing output; move an earlier artifact aside before making a new build. Generated binaries, downloaded source, and staging directories are local build products and should not be committed to Git.
 
@@ -44,7 +44,7 @@ To check a downloaded or copied DMG, place its checksum beside it and run:
 
 ```sh
 cd dist
-shasum -a 256 -c ChannelDeck-0.2.0-arm64.dmg.sha256
+shasum -a 256 -c ChannelDeck-0.2.1-arm64.dmg.sha256
 ```
 
 A matching checksum confirms the file matches the supplied checksum; it is not a substitute for a trusted download source or Developer ID signing.
