@@ -1,6 +1,54 @@
 import Foundation
 import SwiftData
 
+struct CatalogueChannelSnapshot: Sendable {
+    let persistentID: PersistentIdentifier
+    let id: String
+    let sourceID: UUID
+    let name: String
+    let group: String
+    let order: Int
+    let isFavorite: Bool
+}
+
+struct CatalogueProgrammeSnapshot: Sendable {
+    let persistentID: PersistentIdentifier
+    let id: String
+    let channelID: String
+    let title: String
+    let start: Date
+    let end: Date
+}
+
+/// Created on a detached task so its model executor is not bound to the UI
+/// context. Only immutable snapshots/identifiers cross the actor boundary.
+@ModelActor
+actor CatalogueSnapshotReader {
+    func channels() throws -> [CatalogueChannelSnapshot] {
+        var descriptor = FetchDescriptor<ChannelRecord>()
+        descriptor.includePendingChanges = false
+        return try modelContext.fetch(descriptor).map {
+            CatalogueChannelSnapshot(persistentID: $0.persistentModelID, id: $0.stableID,
+                sourceID: $0.sourceID, name: $0.name, group: $0.groupName, order: $0.sortIndex, isFavorite: $0.isFavorite)
+        }
+    }
+
+    func programmes(from date: Date, to upperBound: Date) throws -> [CatalogueProgrammeSnapshot] {
+        var descriptor = FetchDescriptor<ProgrammeRecord>(
+            predicate: #Predicate { $0.endDate > date && $0.startDate < upperBound }
+        )
+        descriptor.includePendingChanges = false
+        return try modelContext.fetch(descriptor).map {
+            CatalogueProgrammeSnapshot(persistentID: $0.persistentModelID, id: $0.stableID,
+                channelID: $0.channelStableID, title: $0.title, start: $0.startDate, end: $0.endDate)
+        }.sorted {
+            if $0.channelID != $1.channelID { return $0.channelID < $1.channelID }
+            if $0.start != $1.start { return $0.start < $1.start }
+            return $0.id < $1.id
+        }
+    }
+}
+
 @Model
 final class PlaylistSourceRecord {
     @Attribute(.unique) var id: UUID

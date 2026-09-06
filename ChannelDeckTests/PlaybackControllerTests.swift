@@ -142,6 +142,68 @@ final class ChannelSearchIndexTests: XCTestCase {
 
 final class PlaybackControllerTests: XCTestCase {
     @MainActor
+    func testPlayingMediaContinuesBehindGuideWithoutASeekOrRestart() async throws {
+        let candidates = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]
+        guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            throw XCTSkip("FFmpeg is required to generate the local audio/video fixture")
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("guide-playback-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let mediaURL = directory.appendingPathComponent("fixture.mp4")
+        let exitStatus = try await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            // A real video + silent audio track exercises AVKit without making
+            // noise or connecting to a provider during automated tests.
+            process.arguments = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=25",
+                "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "12", "-c:v", "libx264",
+                "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", mediaURL.path]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus
+        }.value
+        XCTAssertEqual(exitStatus, 0)
+        let item = AVPlayerItem(url: mediaURL)
+        let player = AVPlayer(playerItem: item)
+        func workspace(showGuide: Bool) -> some View {
+            PlayerWorkspace(isShowingGuide: showGuide) {
+                PlayerViewRepresentable(player: player).frame(width: 640, height: 360)
+            } guide: {
+                Text("Programme guide")
+            }
+            .frame(width: 640, height: 360)
+        }
+        let host = NSHostingView(rootView: workspace(showGuide: false))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 360),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = host
+        defer { player.pause(); player.replaceCurrentItem(with: nil); window.close() }
+        host.layoutSubtreeIfNeeded()
+        for _ in 0..<500 where item.status == .unknown { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(item.status, .readyToPlay)
+        let surface = try XCTUnwrap(videoViews(in: host).first)
+        player.play()
+        for _ in 0..<500 where player.currentTime().seconds < 0.1 { try await Task.sleep(for: .milliseconds(10)) }
+        for showGuide in [true, false, true, false] {
+            let before = player.currentTime().seconds
+            host.rootView = workspace(showGuide: showGuide)
+            try await Task.sleep(for: .milliseconds(350))
+            host.layoutSubtreeIfNeeded()
+            XCTAssertTrue(videoViews(in: host).first === surface)
+            XCTAssertTrue(player.currentItem === item)
+            XCTAssertEqual(player.rate, 1)
+            XCTAssertFalse(player.isMuted)
+            XCTAssertEqual(player.volume, 1)
+            XCTAssertGreaterThan(player.currentTime().seconds, before + 0.05,
+                                 "The audio/video clock must continue advancing while the guide covers the video")
+        }
+    }
+
+    @MainActor
     func testGuideRoundTripsKeepTheNativeVideoSurfaceAndItemMounted() async throws {
         let item = AVPlayerItem(asset: AVMutableComposition())
         let player = AVPlayer(playerItem: item)

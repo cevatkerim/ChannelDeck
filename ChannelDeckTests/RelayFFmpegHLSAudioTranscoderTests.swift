@@ -104,7 +104,9 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         let executable = root.appendingPathComponent("ffmpeg")
         try writeExecutable(Self.oneSegmentFakeFFmpeg, to: executable)
         let transcoder = FFmpegHLSAudioTranscoder(
-            locator: FixedFFmpegLocator(url: executable), startupTimeout: .milliseconds(600),
+            // This tests receiver timeout retention, not the speed of launching
+            // a shell fixture on a busy test machine.
+            locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(2),
             temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
         )
         let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)

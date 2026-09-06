@@ -77,6 +77,68 @@ final class GuideWindowTests: XCTestCase {
 
 @MainActor
 final class PlaybackPresentationTests: XCTestCase {
+    func testStartupRestoresBatchedCatalogueAndBothSearchIndexes() async throws {
+        let container = try ChannelDeckSchema.makeContainer(inMemory: true)
+        let context = ModelContext(container)
+        let first = PlaylistSourceRecord(displayName: "First", sortIndex: 0)
+        let second = PlaylistSourceRecord(displayName: "Second", sortIndex: 1)
+        context.insert(second)
+        context.insert(first)
+        for offset in (0..<650).reversed() {
+            context.insert(ChannelRecord(stableID: "channel-\(offset)", sourceID: first.id, tvgID: nil,
+                name: offset == 42 ? "Télévision Unique" : "Channel \(offset)", groupName: "Sports",
+                logoURLString: nil, sortIndex: offset, isFavorite: offset == 42))
+        }
+        context.insert(ChannelRecord(stableID: "second", sourceID: second.id, tvgID: nil,
+            name: "Other", groupName: "News", logoURLString: nil, sortIndex: 0))
+        let now = Date.now
+        context.insert(ProgrammeRecord(stableID: "on-now", sourceID: first.id, channelStableID: "channel-42",
+            title: "Current programme", programmeDescription: nil,
+            startDate: now.addingTimeInterval(-60), endDate: now.addingTimeInterval(3600)))
+        try context.save()
+        let defaultsName = "ChannelDeckTests.Startup.\(UUID())"
+        let defaults = UserDefaults(suiteName: defaultsName)!
+        defer { defaults.removePersistentDomain(forName: defaultsName) }
+        let model = AppModel(modelContainer: container, keychain: PresentationTestKeychain(), preferenceStore: defaults)
+        await model.restoreCatalogueForLaunch()
+
+        XCTAssertNil(model.presentedAlert)
+        XCTAssertEqual(model.sources.map(\.id), [first.id, second.id])
+        XCTAssertEqual(model.channels.count, 651)
+        XCTAssertEqual(model.channelCount(for: first.id), 650)
+        XCTAssertEqual(model.channelCount(for: second.id), 1)
+        XCTAssertEqual(model.groups(for: first.id), ["Sports"])
+        model.sidebarSelection = .source(first.id)
+        XCTAssertEqual(model.filteredChannels.map(\.sortIndex), Array(0..<650))
+        XCTAssertEqual(model.channel(withID: "channel-42")?.name, "Télévision Unique")
+        XCTAssertTrue(model.guideHasFavorites)
+        let request = GuideSearchRequest(query: "television unique", scope: .source(first.id),
+                                        window: GuideWindow(containing: .now), listingsOnly: false)
+        XCTAssertEqual(try model.guideSearchSnapshot.matchingIDs(for: request, preferences: model.libraryPreferences), ["channel-42"])
+        model.searchText = "television unique"
+        for _ in 0..<100 where model.isSearchingChannels { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(model.filteredChannels.map(\.stableID), ["channel-42"])
+
+        model.refreshGuideWindow()
+        XCTAssertTrue(model.programmes.isEmpty, "Opening the guide must not synchronously fetch its schedule")
+        for _ in 0..<100 where model.programmes.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        let matchedChannel = try XCTUnwrap(model.channel(withID: "channel-42"))
+        XCTAssertEqual(model.currentProgramme(for: matchedChannel)?.title, "Current programme")
+        let listings = GuideSearchRequest(query: "current programme", scope: .source(first.id),
+                                         window: GuideWindow(containing: now), listingsOnly: true)
+        XCTAssertEqual(try model.guideSearchSnapshot.matchingIDs(for: listings, preferences: model.libraryPreferences), ["channel-42"])
+
+        let snapshots = try await Task.detached {
+            let reader = CatalogueSnapshotReader(modelContainer: container)
+            return try await reader.channels()
+        }.value
+        XCTAssertEqual(Set(snapshots.map(\.id)).count, 651)
+        let snapshot = try XCTUnwrap(snapshots.first { $0.id == "channel-42" })
+        let attached = try XCTUnwrap(context.model(for: snapshot.persistentID) as? ChannelRecord)
+        XCTAssertEqual(attached.name, snapshot.name)
+        XCTAssertTrue(snapshot.isFavorite)
+    }
+
     func testBoundChannelSelectionReplacesAnExistingPlayerItem() throws {
         let model = try makeModel()
         defer { model.stopPlayback() }

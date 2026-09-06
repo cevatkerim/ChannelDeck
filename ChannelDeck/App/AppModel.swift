@@ -89,6 +89,10 @@ struct ProgrammeGuideIndex {
             }
     }
 
+    init(schedules: [String: [ProgrammeRecord]]) {
+        self.schedules = schedules
+    }
+
     func current(channelStableID: String, at date: Date) -> ProgrammeRecord? {
         schedules[channelStableID]?.last { programme in
             programme.startDate <= date && date < programme.endDate
@@ -129,6 +133,17 @@ struct ChannelSearchEntry: Equatable, Sendable {
         self.sourceOrder = sourceOrder
         self.channelOrder = channelOrder
     }
+}
+
+private struct LaunchChannelSnapshot: Sendable {
+    let id: String
+    let name: String
+    let group: String
+    let sourceID: UUID
+    let sourceName: String
+    let sourceOrder: Int
+    let order: Int
+    let isFavorite: Bool
 }
 
 struct ChannelSearchIndex: Equatable, Sendable {
@@ -217,6 +232,7 @@ final class AppModel {
     var globalChannelSearchResultIDs: [String] = []
     var isSearchingChannels = false
     var isBootstrapping = true
+    var launchStatus = "Getting your channels ready"
     private(set) var channelIndexRevision = 0
     private(set) var guideSearchRevision = 0
     var refreshingSourceIDs: Set<UUID> = []
@@ -334,6 +350,7 @@ final class AppModel {
     @ObservationIgnored private var channelSearchIndex = ChannelSearchIndex()
     @ObservationIgnored private var channelSearchTask: Task<Void, Never>?
     @ObservationIgnored private var guideRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var guideWindowRefreshTask: Task<Void, Never>?
     private var programmeGuideIndex = ProgrammeGuideIndex()
     @ObservationIgnored private var guideSearchIndex = GuideSearchIndex()
 
@@ -478,13 +495,15 @@ final class AppModel {
         await Task.yield()
         // Defer catalogue reads until after SwiftUI can draw the launch view.
         // Large libraries should never delay creation of the first window.
-        reloadCoreState()
+        launchStatus = "Loading your channel library…"
+        await restoreCatalogueForLaunch()
         isLoadingProgrammeGuide = !sources.isEmpty
         defer { isBootstrapping = false }
         // Enter the relay bootstrap phase before yielding to playlist refresh
         // work. Channel selection can still interleave while networking is in
         // progress, but playbackURL(for:) will now wait for that in-flight
         // restore instead of silently bypassing the persisted secure relay.
+        launchStatus = "Restoring playback settings…"
         await airPlayRelayController.bootstrap()
 
         if sources.isEmpty {
@@ -495,9 +514,11 @@ final class AppModel {
         }
 
         for source in sources {
+            launchStatus = "Restoring stream addresses…"
             await loadCachedPlaylist(for: source.id)
         }
-        reloadProgrammeState()
+        launchStatus = "Preparing your programme guide…"
+        await restoreProgrammeWindow()
         isLoadingProgrammeGuide = false
 
         if case .favorites = sidebarSelection, let firstSource = sources.first {
@@ -1466,6 +1487,127 @@ final class AppModel {
         reloadProgrammeState()
     }
 
+    /// The launch profile showed several seconds in the all-at-once model fetch
+    /// and Swift comparator. Read and sort on a background model actor, attach
+    /// main-context model references in batches, then publish the catalogue once.
+    func restoreCatalogueForLaunch() async {
+        do {
+            let restoredSources = try modelContext.fetch(FetchDescriptor<PlaylistSourceRecord>(
+                sortBy: [SortDescriptor(\.sortIndex)]
+            ))
+            let sourceOrders = Dictionary(uniqueKeysWithValues: restoredSources.enumerated().map { ($0.element.id, $0.offset) })
+            let sourceNames = Dictionary(uniqueKeysWithValues: restoredSources.map { ($0.id, $0.displayName) })
+            let container = modelContext.container
+            let records = try await Task.detached(priority: .userInitiated) {
+                let reader = CatalogueSnapshotReader(modelContainer: container)
+                return try await reader.channels().filter { sourceOrders[$0.sourceID] != nil }.sorted {
+                    if $0.sourceID != $1.sourceID { return sourceOrders[$0.sourceID]! < sourceOrders[$1.sourceID]! }
+                    if $0.order != $1.order { return $0.order < $1.order }
+                    return $0.id < $1.id
+                }
+            }.value
+            try Task.checkCancellation()
+            var restoredChannels: [ChannelRecord] = []
+            var byID: [String: ChannelRecord] = [:]
+            var bySource: [UUID: [ChannelRecord]] = [:]
+            var byGroup: [ChannelGroupKey: [ChannelRecord]] = [:]
+            var groups: [UUID: Set<String>] = [:]
+            var snapshots: [LaunchChannelSnapshot] = []
+            for (offset, record) in records.enumerated() {
+                guard let channel = modelContext.model(for: record.persistentID) as? ChannelRecord else { continue }
+                let id = record.id, group = record.group, sourceID = record.sourceID
+                restoredChannels.append(channel)
+                bySource[sourceID, default: []].append(channel)
+                byID[id] = channel
+                byGroup[ChannelGroupKey(sourceID: sourceID, groupName: group), default: []].append(channel)
+                if !group.isEmpty { groups[sourceID, default: []].insert(group) }
+                snapshots.append(LaunchChannelSnapshot(id: id, name: record.name, group: group,
+                    sourceID: sourceID, sourceName: sourceNames[sourceID] ?? "", sourceOrder: sourceOrders[sourceID] ?? .max,
+                    order: record.order, isFavorite: record.isFavorite))
+                if offset.isMultiple(of: 256) {
+                    launchStatus = "Restoring channels · \(restoredChannels.count.formatted())"
+                    try await Task.sleep(for: .milliseconds(1))
+                }
+            }
+            launchStatus = "Preparing channel search…"
+            let searchInput = snapshots
+            let indexes = await Task.detached(priority: .userInitiated) {
+                let channelIndex = ChannelSearchIndex(entries: searchInput.map {
+                    ChannelSearchEntry(stableID: $0.id, channelName: $0.name, groupName: $0.group,
+                                       sourceName: $0.sourceName, sourceOrder: $0.sourceOrder, channelOrder: $0.order)
+                })
+                var guideIndex = GuideSearchIndex()
+                guideIndex.replaceChannels(searchInput.map {
+                    GuideSearchChannel(stableID: $0.id, sourceID: $0.sourceID, name: $0.name, groupName: $0.group)
+                }, favoriteIDs: Set(searchInput.lazy.filter(\.isFavorite).map(\.id)))
+                return (channelIndex, guideIndex)
+            }.value
+            try Task.checkCancellation()
+            sources = restoredSources
+            channels = restoredChannels
+            sourceNameByID = Dictionary(restoredSources.map { ($0.id, $0.displayName) }, uniquingKeysWith: { first, _ in first })
+            channelByID = byID
+            channelsBySourceID = bySource
+            channelsByGroup = byGroup
+            channelCountBySourceID = bySource.mapValues(\.count)
+            groupNamesBySourceID = groups.mapValues { $0.sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
+            channelSearchIndex = indexes.0
+            guideSearchIndex = indexes.1
+            channelIndexRevision &+= 1
+            guideSearchRevision &+= 1
+            scheduleGlobalChannelSearch()
+            reloadRecents()
+            reloadRecordings()
+        } catch is CancellationError {
+            return
+        } catch {
+            presentedAlert = AppAlert(title: "Library Error", message: "The local channel library could not be read.")
+        }
+    }
+
+    private func restoreProgrammeWindow(at date: Date = .now) async {
+        let initialRevision = guideSearchRevision
+        do {
+            let upperBound = date.addingTimeInterval(6 * 60 * 60)
+            let container = modelContext.container
+            let snapshots = try await Task.detached(priority: .userInitiated) {
+                let reader = CatalogueSnapshotReader(modelContainer: container)
+                return try await reader.programmes(from: date, to: upperBound)
+            }.value
+            try Task.checkCancellation()
+            var restored: [ProgrammeRecord] = []
+            var schedules: [String: [ProgrammeRecord]] = [:]
+            for (offset, snapshot) in snapshots.enumerated() {
+                guard let programme = modelContext.model(for: snapshot.persistentID) as? ProgrammeRecord else { continue }
+                restored.append(programme)
+                schedules[snapshot.channelID, default: []].append(programme)
+                if offset.isMultiple(of: 256) { try await Task.sleep(for: .milliseconds(1)) }
+            }
+            let searchInput = snapshots
+            let channelIndex = guideSearchIndex
+            let index = await Task.detached(priority: .userInitiated) {
+                var index = channelIndex
+                index.replaceProgrammes(searchInput.map {
+                    GuideSearchProgramme(channelID: $0.channelID, title: $0.title, start: $0.start, end: $0.end)
+                })
+                return index
+            }.value
+            try Task.checkCancellation()
+            let programmeIndex = ProgrammeGuideIndex(schedules: schedules)
+            // A provider refresh or favorite edit may have published newer guide
+            // state while we yielded. Never replace it with this older snapshot.
+            guard !Task.isCancelled, guideSearchRevision == initialRevision else { return }
+            programmes = restored
+            programmeGuideIndex = programmeIndex
+            guideSearchIndex = index
+            guideSearchRevision &+= 1
+        } catch is CancellationError {
+            return
+        } catch {
+            presentedAlert = AppAlert(title: "Library Error", message: "The local programme guide could not be read.")
+        }
+    }
+
     private func reloadCoreState() {
         do {
             sources = try modelContext.fetch(FetchDescriptor<PlaylistSourceRecord>())
@@ -1559,7 +1701,12 @@ final class AppModel {
     }
 
     func refreshGuideWindow() {
-        reloadProgrammeState()
+        guard guideWindowRefreshTask == nil else { return }
+        guideWindowRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { guideWindowRefreshTask = nil }
+            await restoreProgrammeWindow()
+        }
     }
 
     private func reloadProgrammeState(at date: Date = .now) {

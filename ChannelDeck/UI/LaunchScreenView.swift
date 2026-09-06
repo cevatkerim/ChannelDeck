@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct LaunchScreenView: View {
+    @Environment(AppModel.self) private var appModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -19,8 +20,9 @@ struct LaunchScreenView: View {
                 }
                 HStack(spacing: 9) {
                     ProgressView().controlSize(.mini)
-                    Text("Getting your channels ready")
+                    Text(appModel.launchStatus)
                         .font(.system(size: 11))
+                        .monospacedDigit()
                         .foregroundStyle(ChannelDeckStyle.muted)
                 }
                 .padding(.top, 15)
@@ -28,7 +30,7 @@ struct LaunchScreenView: View {
         }
         .ignoresSafeArea()
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("ChannelDeck is preparing your channels")
+        .accessibilityLabel("ChannelDeck. \(appModel.launchStatus)")
         .transition(reduceMotion ? .identity : .opacity)
     }
 }

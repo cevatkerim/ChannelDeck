@@ -9,26 +9,24 @@ struct ContentView: View {
         @Bindable var appModel = appModel
 
         ZStack {
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                SidebarView()
-            } detail: {
-                PlayerWorkspace(isShowingGuide: appModel.sidebarSelection == .guide) {
-                    HSplitView {
-                        ChannelBrowserView()
-                            .frame(minWidth: 290, idealWidth: 340, maxWidth: 440)
-                        PlayerDetailView()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if !appModel.isBootstrapping {
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    SidebarView()
+                } detail: {
+                    PlayerWorkspace(isShowingGuide: appModel.sidebarSelection == .guide) {
+                        HSplitView {
+                            ChannelBrowserView()
+                                .frame(minWidth: 290, idealWidth: 340, maxWidth: 440)
+                            PlayerDetailView()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    } guide: {
+                        ProgrammeGuideView()
                     }
-                } guide: {
-                    ProgrammeGuideView()
                 }
+                .navigationSplitViewStyle(.balanced)
+                .tint(ChannelDeckStyle.accent)
             }
-            .navigationSplitViewStyle(.balanced)
-            .tint(ChannelDeckStyle.accent)
-            .opacity(appModel.isBootstrapping ? 0 : 1)
-            .allowsHitTesting(!appModel.isBootstrapping)
-            .disabled(appModel.isBootstrapping)
-            .accessibilityHidden(appModel.isBootstrapping)
 
             if appModel.isBootstrapping {
                 LaunchScreenView()
@@ -91,7 +89,8 @@ struct PlayerWorkspace<PlayerContent: View, GuideContent: View>: View {
     var body: some View {
         ZStack {
             player()
-                .opacity(isShowingGuide ? 0 : 1)
+                // Occlude rather than hide the native surface. AVKit can treat
+                // a hidden rendering view differently from a covered one.
                 .allowsHitTesting(!isShowingGuide)
                 .disabled(isShowingGuide)
                 .accessibilityHidden(isShowingGuide)
