@@ -100,11 +100,21 @@ actor HTTPClient {
             )
         }
 
+#if os(tvOS)
+        // The standalone TV app uses its bounded native transport and does not
+        // link the Mac's relay server or its networking dependencies.
+        do {
+            let data = try await TVHTTPClient().fetch(url, maximumBytes: policy.maximumResponseBytes)
+            return .modified(HTTPPayload(data: data, validators: HTTPValidators(), contentType: nil))
+        } catch is CancellationError { throw CancellationError() }
+        catch { throw HTTPClientError.unexpectedTransportFailure }
+#else
         return try await fetchUsingAsyncHTTPClient(
             url,
             validators: validators,
             policy: policy
         )
+#endif
     }
 
     private func fetchUsingURLSession(
@@ -171,6 +181,7 @@ actor HTTPClient {
         }
     }
 
+#if !os(tvOS)
     private func fetchUsingAsyncHTTPClient(
         _ url: URL,
         validators: HTTPValidators?,
@@ -229,6 +240,8 @@ actor HTTPClient {
             throw HTTPClientError.unexpectedTransportFailure
         }
     }
+
+#endif
 
     private func mergedValidators(
         from response: HTTPURLResponse,

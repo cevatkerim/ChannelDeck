@@ -77,6 +77,69 @@ func png(size: Int, to url: URL, symbol: Bool = false) throws {
     CGImageDestinationAddImage(destination, image, nil)
     guard CGImageDestinationFinalize(destination) else { fatalError("Couldn't write artwork") }
 }
+if CommandLine.arguments.contains("--tvos") {
+    let catalog = root.appendingPathComponent("ChannelDeckTV/Resources/Assets.xcassets")
+    let brand = catalog.appendingPathComponent("TVBrand.brandassets")
+    let info: [String: Any] = ["author": "com.kerimincedayi.ChannelDeckTV", "version": 1]
+    func metadata(_ object: [String: Any], at directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+            .write(to: directory.appendingPathComponent("Contents.json"))
+    }
+    func artwork(width: Int, height: Int, layer: String, at url: URL) {
+        let c = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                          space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        c.translateBy(x: 0, y: CGFloat(height)); c.scaleBy(x: 1, y: -1)
+        let canvasWidth: CGFloat = layer == "Shelf" ? 1920 : 1024
+        let canvasHeight: CGFloat = layer == "Shelf" ? 720 : 614.4
+        c.scaleBy(x: CGFloat(width) / canvasWidth, y: CGFloat(height) / canvasHeight)
+        if layer == "Background" || layer == "Shelf" {
+            gradient(c, path: CGPath(rect: CGRect(x: 0, y: 0, width: canvasWidth, height: canvasHeight), transform: nil),
+                     colors: [color(0x285E4C), color(0x081B16)], start: .zero, end: CGPoint(x: canvasWidth, y: canvasHeight))
+        }
+        c.saveGState()
+        if layer == "Shelf" { c.translateBy(x: 160, y: -35); c.scaleBy(x: 0.75, y: 0.75) }
+        else { c.translateBy(x: 102, y: -102); c.scaleBy(x: 0.8, y: 0.8) }
+        if layer == "Middle" || layer == "Shelf" {
+            gradient(c, path: back, colors: [color(0x91E5BF), color(0x429B7C)], start: CGPoint(x: 340, y: 230), end: CGPoint(x: 730, y: 720))
+        }
+        if layer == "Foreground" || layer == "Shelf" {
+            gradient(c, path: front, colors: [color(0xE5FFEE), color(0x8ADFB6)], start: CGPoint(x: 260, y: 325), end: CGPoint(x: 700, y: 790))
+            c.setFillColor(color(0x174A39)); c.addPath(play); c.fillPath()
+        }
+        c.restoreGState()
+        if layer == "Shelf" {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: c, flipped: true)
+            ("ChannelDeck" as NSString).draw(at: CGPoint(x: 850, y: 285), withAttributes: [.font: NSFont.systemFont(ofSize: 84, weight: .bold), .foregroundColor: NSColor.white])
+            ("Your front row to live TV" as NSString).draw(at: CGPoint(x: 853, y: 390), withAttributes: [.font: NSFont.systemFont(ofSize: 30, weight: .medium), .foregroundColor: NSColor(cgColor: color(0x91E5BF))!])
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(destination, c.makeImage()!, nil)
+        precondition(CGImageDestinationFinalize(destination))
+    }
+    try metadata(["info": info], at: catalog)
+    var assets: [[String: Any]] = []
+    for (name, width, height, scales) in [("App Icon", 400, 240, [1, 2]), ("App Store Icon", 1280, 768, [1])] {
+        let stack = brand.appendingPathComponent(name + ".imagestack")
+        let layers = ["Foreground", "Middle", "Background"]
+        try metadata(["info": info, "layers": layers.map { ["filename": $0 + ".imagestacklayer"] }], at: stack)
+        for layer in layers {
+            let directory = stack.appendingPathComponent(layer + ".imagestacklayer/Content.imageset")
+            try metadata(["info": info, "images": scales.map { ["idiom": "tv", "scale": "\($0)x", "filename": "layer@\($0)x.png"] }], at: directory)
+            for scale in scales { artwork(width: width * scale, height: height * scale, layer: layer, at: directory.appendingPathComponent("layer@\(scale)x.png")) }
+        }
+        assets.append(["filename": name + ".imagestack", "idiom": "tv", "role": "primary-app-icon", "size": "\(width)x\(height)"])
+    }
+    let shelf = brand.appendingPathComponent("Top Shelf.imageset")
+    try metadata(["info": info, "images": [1, 2].map { ["idiom": "tv", "scale": "\($0)x", "filename": "shelf@\($0)x.png"] }], at: shelf)
+    for scale in [1, 2] { artwork(width: 1920 * scale, height: 720 * scale, layer: "Shelf", at: shelf.appendingPathComponent("shelf@\(scale)x.png")) }
+    assets.append(["filename": "Top Shelf.imageset", "idiom": "tv", "role": "top-shelf-image", "size": "1920x720"])
+    try metadata(["info": info, "assets": assets], at: brand)
+    print("Rendered layered Apple TV icons and Top Shelf artwork.")
+    exit(0)
+}
 for size in [16, 32, 64, 128, 256, 512, 1024] {
     try png(size: size, to: assets.appendingPathComponent("AppIcon.appiconset/icon_\(size)x\(size).png"))
 }

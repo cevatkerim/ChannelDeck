@@ -82,7 +82,7 @@ struct ParsedChannel: Equatable, Sendable {
     }
 }
 
-struct ParsedProgramme: Equatable, Sendable {
+struct ParsedProgramme: Codable, Equatable, Sendable {
     let channelID: String
     let title: String
     let subtitle: String?

@@ -1,0 +1,13 @@
+{
+  "images" : [
+    {
+      "filename" : "layer@1x.png",
+      "idiom" : "tv",
+      "scale" : "1x"
+    }
+  ],
+  "info" : {
+    "author" : "com.kerimincedayi.ChannelDeckTV",
+    "version" : 1
+  }
+}

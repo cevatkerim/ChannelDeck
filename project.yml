@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.kerimincedayi
   deploymentTarget:
     macOS: "15.0"
+    tvOS: "18.0"
   createIntermediateGroups: true
 settings:
   base:
@@ -79,3 +80,129 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeckTests
         GENERATE_INFOPLIST_FILE: true
         CODE_SIGNING_ALLOWED: false
+  ChannelDeckTV:
+    type: application
+    platform: tvOS
+    sources:
+      - path: ChannelDeckTVShared
+        excludes: [ChannelDeckTV.entitlements]
+      - path: ChannelDeckTV
+        excludes:
+          - Resources/Info.plist
+      - path: ChannelDeck/Core/DomainModels.swift
+      - path: ChannelDeck/Core/ChannelSearchIndex.swift
+      - path: ChannelDeck/Core/GuideSearchIndex.swift
+      - path: ChannelDeck/Core/LibraryPreferences.swift
+      - path: ChannelDeck/Core/EPGMatching.swift
+      - path: ChannelDeck/Services/OpenEPGService.swift
+      - path: ChannelDeck/Networking/HTTPClient.swift
+      - path: ChannelDeck/Services/M3UParser.swift
+      - path: ChannelDeck/Services/XMLTVParser.swift
+      - path: ChannelDeck/Security/KeychainStore.swift
+      - path: ChannelDeck/Security/EncryptedPlaylistCache.swift
+      - path: ChannelDeck/Networking/GzipDecompressor.swift
+    info:
+      path: ChannelDeckTV/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: ChannelDeck
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        CFBundleURLTypes:
+          - CFBundleURLName: com.kerimincedayi.ChannelDeckTV.watch
+            CFBundleURLSchemes: [channeldeck]
+        UIUserInterfaceStyle: Dark
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        NSLocalNetworkUsageDescription: ChannelDeck plays playlists and media hosted on your local network.
+    dependencies:
+      - target: ChannelDeckTVTopShelf
+        embed: true
+    preBuildScripts:
+      - name: Check embedded FFmpeg libraries
+        script: |
+          if [ ! -f "$SRCROOT/.build/ffmpeg-tvos/$PLATFORM_NAME/lib/libavcodec.a" ]; then
+            echo "error: Embedded FFmpeg is missing. Run: bash Scripts/build_ffmpeg_tvos.sh"
+            exit 1
+          fi
+        basedOnDependencyAnalysis: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeckTV
+        PRODUCT_NAME: ChannelDeckTV
+        CODE_SIGN_ENTITLEMENTS: ChannelDeckTVShared/ChannelDeckTV.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: TVBrand
+        GENERATE_INFOPLIST_FILE: false
+        SWIFT_OBJC_BRIDGING_HEADER: ChannelDeckTV/Playback/ChannelDeckTV-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
+        CLANG_ENABLE_MODULES: true
+        HEADER_SEARCH_PATHS: "$(inherited) $(SRCROOT)/.build/ffmpeg-tvos/$(PLATFORM_NAME)/include"
+        LIBRARY_SEARCH_PATHS: "$(inherited) $(SRCROOT)/.build/ffmpeg-tvos/$(PLATFORM_NAME)/lib"
+        OTHER_LDFLAGS: "$(inherited) -lavformat -lavcodec -lavutil -lswresample -lswscale -lz -lbz2 -liconv -framework VideoToolbox -framework AudioToolbox -framework CoreMedia -framework CoreVideo -framework Security -framework CoreImage -framework ImageIO"
+        ENABLE_USER_SCRIPT_SANDBOXING: false
+        TARGETED_DEVICE_FAMILY: 3
+        ARCHS: arm64
+  ChannelDeckTVTopShelf:
+    type: app-extension
+    platform: tvOS
+    sources:
+      - path: ChannelDeckTVTopShelf
+        excludes: [Info.plist]
+      - path: ChannelDeckTVShared
+        excludes: [ChannelDeckTV.entitlements]
+    info:
+      path: ChannelDeckTVTopShelf/Info.plist
+      properties:
+        CFBundleDisplayName: ChannelDeck Top Shelf
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.tv-top-shelf
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ContentProvider
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeckTV.TopShelf
+        CODE_SIGN_ENTITLEMENTS: ChannelDeckTVShared/ChannelDeckTV.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        APPLICATION_EXTENSION_API_ONLY: true
+        ARCHS: arm64
+  ChannelDeckTVTests:
+    type: bundle.unit-test
+    platform: tvOS
+    sources:
+      - path: ChannelDeckTVTests
+        excludes:
+          - PacketRingStandalone.cpp
+      - path: ChannelDeckTests/EPGMatchingTests.swift
+      - path: ChannelDeckTests/OpenEPGServiceTests.swift
+      - path: ChannelDeckTests/GuideSearchTests.swift
+    dependencies:
+      - target: ChannelDeckTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeckTVTests
+        GENERATE_INFOPLIST_FILE: true
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
+        ARCHS: arm64
+  ChannelDeckTVUITests:
+    type: bundle.ui-testing
+    platform: tvOS
+    sources:
+      - path: ChannelDeckTVUITests
+    dependencies:
+      - target: ChannelDeckTV
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kerimincedayi.ChannelDeckTVUITests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: ChannelDeckTV
+        ARCHS: arm64
+schemes:
+  ChannelDeckTV:
+    build:
+      targets:
+        ChannelDeckTV: all
+    test:
+      targets:
+        - ChannelDeckTVTests
+        - ChannelDeckTVUITests

@@ -17,6 +17,8 @@ ChannelDeck brings your M3U playlists together in a native Mac TV library. A min
 
 ChannelDeck does **not** include channels, playlists, subscriptions, or credentials. Bring a playlist you are authorized to use; sensitive source URLs are stored in the macOS Keychain rather than in the project or ordinary app preferences.
 
+The separate **ChannelDeckTV** target brings the library, Open-EPG guide, Siri Remote playback, a floating mini player, quick channel switching, frame-and-logo channel previews, a personalized Home Screen Top Shelf, and up to ten minutes of temporary live rewind to Apple TV. It embeds FFmpeg and works independently of the Mac. See [Apple TV setup, architecture, and validation](docs/tvos.md).
+
 ![ChannelDeck in dark appearance with live playback, favorites, and recording controls](docs/screenshots/playback.jpg)
 
 ## A closer look

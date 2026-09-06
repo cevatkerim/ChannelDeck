@@ -1,6 +1,10 @@
 import Foundation
 import XCTest
+#if os(tvOS)
+@testable import ChannelDeckTV
+#else
 @testable import ChannelDeck
+#endif
 
 final class OpenEPGServiceTests: XCTestCase {
     private var directory: URL!

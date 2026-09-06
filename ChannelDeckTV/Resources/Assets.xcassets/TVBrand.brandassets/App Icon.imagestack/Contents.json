@@ -1,0 +1,17 @@
+{
+  "info" : {
+    "author" : "com.kerimincedayi.ChannelDeckTV",
+    "version" : 1
+  },
+  "layers" : [
+    {
+      "filename" : "Foreground.imagestacklayer"
+    },
+    {
+      "filename" : "Middle.imagestacklayer"
+    },
+    {
+      "filename" : "Background.imagestacklayer"
+    }
+  ]
+}
