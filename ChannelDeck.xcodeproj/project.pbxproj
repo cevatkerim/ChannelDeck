@@ -14,10 +14,12 @@
 		09837F52EBCEDA91E891ACDC /* FFmpegHLSAudioTranscoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6207941AF73A5656CA8D0E75 /* FFmpegHLSAudioTranscoder.swift */; };
 		0B323FBBFC0AFA6A428D2CBF /* HTTPClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7D00959364BA9E3C11A94F /* HTTPClient.swift */; };
 		0B49636CB68A0E51FEF91636 /* RelayLANAddressResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53C6A8606B1B78303E487258 /* RelayLANAddressResolverTests.swift */; };
+		141F287FDADC879F075A712E /* LiveHLSFirstFrameTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A91EFE16165CC753B38B9099 /* LiveHLSFirstFrameTests.swift */; };
 		1A503F154E67C9594D5204DF /* LiveRelayProvisioningTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16FEF7A5A8A19EC5CBA55AC4 /* LiveRelayProvisioningTests.swift */; };
 		1C422D0E7C8AA209FB334595 /* AirPlayRelayPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA9D9F3B15F6AA3FE602FBC2 /* AirPlayRelayPreferences.swift */; };
 		1FBE45019B08BE021AD0E2E3 /* RelayHLSPlaylistRewriterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8BB70A87359A7542B2D87BA /* RelayHLSPlaylistRewriterTests.swift */; };
 		210C149E82CA1EEA66E4ABBB /* RecordingStorageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC737C02B4795BD33AFDCD5C /* RecordingStorageTests.swift */; };
+		24426296CA435F3CB362C4FB /* H264TransportStreamStartupInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 349922E2C096559317DE86CB /* H264TransportStreamStartupInspector.swift */; };
 		253D3A6C2D4E76921450F49C /* HLSPlaylistRewriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D9CFBE668406250E38311FB /* HLSPlaylistRewriter.swift */; };
 		2893AA7F79BC8055669115C2 /* ParserXMLTVParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E3F27C59BA633F7368BB0F3 /* ParserXMLTVParserTests.swift */; };
 		29EA45E3F0908C12A0CF4F28 /* LaunchScreenView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D1551A2487F145D59ECA4F /* LaunchScreenView.swift */; };
@@ -66,6 +68,7 @@
 		AE11F7984D281525BAD34E21 /* AcmeSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 62D7DADD1E08A868DD4D0394 /* AcmeSwift */; };
 		B6F8EB69C5D712BBF7F472AF /* X509 in Frameworks */ = {isa = PBXBuildFile; productRef = 326A488F53FB20FE43F551D7 /* X509 */; };
 		BD1DC69934DF4866DDD27D41 /* ACMEModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE790D3A65087536D8788C1D /* ACMEModels.swift */; };
+		BDBA0D0290BEE11DCB9EF6B4 /* H264TransportStreamStartupInspectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 44CEB4F7E400C2D8DBEB4062 /* H264TransportStreamStartupInspectorTests.swift */; };
 		BF036D05F83492BD27308B4B /* RecordingSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D85AA48ACDBE13DA799B5FD /* RecordingSupport.swift */; };
 		BF0C1FD82115C3FC573D03D0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5DBC4C4ECF5A5D9870B6F85C /* Assets.xcassets */; };
 		C0F34BCD8C3AC17D297C8888 /* ACMEProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = E34FB43226895A545D95DA33 /* ACMEProtocols.swift */; };
@@ -130,8 +133,10 @@
 		2E96A136F87B7334612D4C50 /* XMLTVParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = XMLTVParser.swift; sourceTree = "<group>"; };
 		2EAE12839EF568EB10080FCA /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift; sourceTree = "<group>"; };
 		32EAA7BF792EC7CCBC563501 /* AsyncHTTPClientMPEGTSStreamSource.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsyncHTTPClientMPEGTSStreamSource.swift; sourceTree = "<group>"; };
+		349922E2C096559317DE86CB /* H264TransportStreamStartupInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H264TransportStreamStartupInspector.swift; sourceTree = "<group>"; };
 		370CB5F9064DE5F77C835204 /* EPGMatching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EPGMatching.swift; sourceTree = "<group>"; };
 		3C6CBF893B7F83B3763F8D53 /* DNSPropagationChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DNSPropagationChecker.swift; sourceTree = "<group>"; };
+		44CEB4F7E400C2D8DBEB4062 /* H264TransportStreamStartupInspectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = H264TransportStreamStartupInspectorTests.swift; sourceTree = "<group>"; };
 		51AC03890CE96EB0BD473B32 /* HLSRelayServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSRelayServer.swift; sourceTree = "<group>"; };
 		524A918F476DE61068C84B28 /* NetworkGzipCompressorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkGzipCompressorTests.swift; sourceTree = "<group>"; };
 		53C6A8606B1B78303E487258 /* RelayLANAddressResolverTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayLANAddressResolverTests.swift; sourceTree = "<group>"; };
@@ -160,6 +165,7 @@
 		9A7970A634FE5CCAA3F172AA /* AirPlayRoutePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayRoutePicker.swift; sourceTree = "<group>"; };
 		9AB8307184BFC73BC5CF3A12 /* GuideSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideSearchTests.swift; sourceTree = "<group>"; };
 		A7102F3130C3A7A379503887 /* HLSRelayTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSRelayTypes.swift; sourceTree = "<group>"; };
+		A91EFE16165CC753B38B9099 /* LiveHLSFirstFrameTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveHLSFirstFrameTests.swift; sourceTree = "<group>"; };
 		AD59F0D49A9B382AB203CBB1 /* RelayResponseDiagnosticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayResponseDiagnosticsTests.swift; sourceTree = "<group>"; };
 		AE790D3A65087536D8788C1D /* ACMEModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMEModels.swift; sourceTree = "<group>"; };
 		B01A6A0E593B6A20F1E945AA /* ACMECertificateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ACMECertificateManager.swift; sourceTree = "<group>"; };
@@ -228,7 +234,9 @@
 				C125DC241506C420C086042A /* ACMECertificateManagerTests.swift */,
 				F5D74F8EF5E81272E0BE2AC0 /* EPGMatchingTests.swift */,
 				9AB8307184BFC73BC5CF3A12 /* GuideSearchTests.swift */,
+				44CEB4F7E400C2D8DBEB4062 /* H264TransportStreamStartupInspectorTests.swift */,
 				02421DC4F210B97A2D7B9936 /* LibraryPresentationTests.swift */,
+				A91EFE16165CC753B38B9099 /* LiveHLSFirstFrameTests.swift */,
 				16FEF7A5A8A19EC5CBA55AC4 /* LiveRelayProvisioningTests.swift */,
 				2EAE12839EF568EB10080FCA /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift */,
 				1BF70B5926B1198FDA473C96 /* NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift */,
@@ -307,6 +315,7 @@
 				EF00699FCD0549D463896696 /* AsyncHTTPClientHLSRelayUpstreamFetcher.swift */,
 				32EAA7BF792EC7CCBC563501 /* AsyncHTTPClientMPEGTSStreamSource.swift */,
 				6207941AF73A5656CA8D0E75 /* FFmpegHLSAudioTranscoder.swift */,
+				349922E2C096559317DE86CB /* H264TransportStreamStartupInspector.swift */,
 				8D9CFBE668406250E38311FB /* HLSPlaylistRewriter.swift */,
 				F18F9B280CB4CB404137412E /* HLSRelayCore.swift */,
 				1D96CC1FB2EB6F9CF33296B9 /* HLSRelayResponseDiagnostics.swift */,
@@ -542,6 +551,7 @@
 				9AF680EC1D8B889A076BCA0E /* GuideSearchIndex.swift in Sources */,
 				9B19CBB4FBF424B4F2685D86 /* GzipCompressor.swift in Sources */,
 				4E12CF9CF1DD74C47CC51914 /* GzipDecompressor.swift in Sources */,
+				24426296CA435F3CB362C4FB /* H264TransportStreamStartupInspector.swift in Sources */,
 				253D3A6C2D4E76921450F49C /* HLSPlaylistRewriter.swift in Sources */,
 				2FB1A7A50BF41F78496C0E55 /* HLSRelayCore.swift in Sources */,
 				363D1139B28E0E4FB7FCCA39 /* HLSRelayResponseDiagnostics.swift in Sources */,
@@ -576,7 +586,9 @@
 				EE4243F8BAC29BF1008C1B4A /* ACMECertificateManagerTests.swift in Sources */,
 				4B6ACB8FB892FE1320A34444 /* EPGMatchingTests.swift in Sources */,
 				2B326284E08AECDE80F9EB4B /* GuideSearchTests.swift in Sources */,
+				BDBA0D0290BEE11DCB9EF6B4 /* H264TransportStreamStartupInspectorTests.swift in Sources */,
 				CD65FC53B2EA2010FF3B9A9C /* LibraryPresentationTests.swift in Sources */,
+				141F287FDADC879F075A712E /* LiveHLSFirstFrameTests.swift in Sources */,
 				1A503F154E67C9594D5204DF /* LiveRelayProvisioningTests.swift in Sources */,
 				80DD22B0C73BC37EA3B96DDB /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift in Sources */,
 				E045AD7D2F91709A888B53F7 /* NetworkAsyncHTTPClientMPEGTSStreamSourceTests.swift in Sources */,

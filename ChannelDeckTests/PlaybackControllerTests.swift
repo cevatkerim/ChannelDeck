@@ -142,35 +142,143 @@ final class ChannelSearchIndexTests: XCTestCase {
 
 final class PlaybackControllerTests: XCTestCase {
     @MainActor
-    func testPlayingMediaContinuesBehindGuideWithoutASeekOrRestart() async throws {
-        let candidates = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]
-        guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
-            throw XCTSkip("FFmpeg is required to generate the local audio/video fixture")
+    func testDisplayReadyBeforeItemReadyIsReevaluatedWhenItemBecomesReady() async throws {
+        let mediaURL = try await makeLocalMediaFixture()
+        defer { try? FileManager.default.removeItem(at: mediaURL.deletingLastPathComponent()) }
+        let controller = PlayerController()
+        defer { controller.stop() }
+        controller.play(url: mediaURL, channelName: "Readiness fixture", allowsExternalPlayback: false)
+        let item = try XCTUnwrap(controller.player.currentItem)
+        let view = InitiallyReadyPlayerView()
+        view.player = controller.player
+        let coordinator = PlayerViewRepresentable.Coordinator()
+        coordinator.attach(to: view, controller: controller)
+        defer { coordinator.detach() }
+        // This view always reports display-ready and never emits a later
+        // display-readiness transition. Item.status must also wake the bridge.
+        for _ in 0..<500 where !controller.hasDisplayedVideoFrame {
+            try await Task.sleep(for: .milliseconds(10))
         }
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("guide-playback-\(UUID())", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let mediaURL = directory.appendingPathComponent("fixture.mp4")
-        let exitStatus = try await Task.detached {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: executable)
-            // A real video + silent audio track exercises AVKit without making
-            // noise or connecting to a provider during automated tests.
-            process.arguments = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=25",
-                "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "12", "-c:v", "libx264",
-                "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", mediaURL.path]
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            try process.run()
-            process.waitUntilExit()
-            return process.terminationStatus
-        }.value
-        XCTAssertEqual(exitStatus, 0)
-        let item = AVPlayerItem(url: mediaURL)
-        let player = AVPlayer(playerItem: item)
+        XCTAssertEqual(item.status, .readyToPlay)
+        XCTAssertTrue(controller.hasDisplayedVideoFrame)
+        XCTAssertFalse(controller.isPreparingFirstVideoFrame)
+    }
+
+    @MainActor
+    func testQuickStartRequiresMediaBufferedAtTheCurrentPosition() {
+        let range = CMTimeRange(start: CMTime(seconds: 10, preferredTimescale: 600),
+                                duration: CMTime(seconds: 3, preferredTimescale: 600))
+        XCTAssertFalse(PlayerController.hasBufferedMedia(at: 10, ranges: []))
+        XCTAssertFalse(PlayerController.hasBufferedMedia(at: .nan, ranges: [range]))
+        XCTAssertFalse(PlayerController.hasBufferedMedia(at: 0, ranges: [range]))
+        XCTAssertFalse(PlayerController.hasBufferedMedia(at: 13, ranges: [range]))
+        XCTAssertTrue(PlayerController.hasBufferedMedia(at: 10, ranges: [range]))
+        XCTAssertTrue(PlayerController.hasBufferedMedia(at: 12, ranges: [range]))
+    }
+
+    @MainActor
+    func testFirstFrameReadinessDoesNotTreatAudioOrAirPlayAsMissingVideo() {
+        XCTAssertTrue(PlayerController.requiresFirstVideoFrame(
+            hasVideoTrack: nil, hasDisplayedVideoFrame: false, isExternalPlaybackActive: false))
+        XCTAssertTrue(PlayerController.requiresFirstVideoFrame(
+            hasVideoTrack: true, hasDisplayedVideoFrame: false, isExternalPlaybackActive: false))
+        XCTAssertFalse(PlayerController.requiresFirstVideoFrame(
+            hasVideoTrack: false, hasDisplayedVideoFrame: false, isExternalPlaybackActive: false))
+        XCTAssertFalse(PlayerController.requiresFirstVideoFrame(
+            hasVideoTrack: true, hasDisplayedVideoFrame: false, isExternalPlaybackActive: true))
+        XCTAssertFalse(PlayerController.requiresFirstVideoFrame(
+            hasVideoTrack: true, hasDisplayedVideoFrame: true, isExternalPlaybackActive: false))
+    }
+
+    @MainActor
+    func testFirstDisplayedFrameIsLatchedForOnlyTheCurrentItem() throws {
+        let controller = PlayerController()
+        defer { controller.stop() }
+        controller.play(url: URL(fileURLWithPath: "/private/tmp/first-frame-one.mp4"), channelName: "One")
+        let firstItem = try XCTUnwrap(controller.player.currentItem)
+        XCTAssertTrue(controller.isPreparingFirstVideoFrame)
+        controller.reportVideoDisplayReady(true, for: firstItem)
+        XCTAssertTrue(controller.hasDisplayedVideoFrame)
+        XCTAssertFalse(controller.isPreparingFirstVideoFrame)
+        controller.reportVideoDisplayReady(false, for: firstItem)
+        XCTAssertTrue(controller.hasDisplayedVideoFrame, "Guide/PiP must not clear an already displayed picture")
+
+        controller.play(url: URL(fileURLWithPath: "/private/tmp/first-frame-two.mp4"), channelName: "Two")
+        let secondItem = try XCTUnwrap(controller.player.currentItem)
+        XCTAssertFalse(controller.hasDisplayedVideoFrame)
+        controller.reportVideoDisplayReady(true, for: firstItem)
+        XCTAssertFalse(controller.hasDisplayedVideoFrame, "Ignore a queued callback from the previous channel")
+        controller.reportVideoDisplayReady(true, for: secondItem)
+        controller.stop()
+        controller.reportVideoDisplayReady(true, for: secondItem)
+        XCTAssertFalse(controller.hasDisplayedVideoFrame)
+        XCTAssertFalse(controller.isPreparingFirstVideoFrame)
+    }
+
+    @MainActor
+    func testMissingFirstFrameTimesOutOnlyWhileVisibleVideoIsActuallyPlaying() async throws {
+        let mediaURL = try await makeLocalMediaFixture()
+        defer { try? FileManager.default.removeItem(at: mediaURL.deletingLastPathComponent()) }
+        let controller = PlayerController(firstVideoFrameTimeout: .milliseconds(300))
+        defer { controller.stop() }
+        // No renderer reports a frame, simulating the original black-picture
+        // symptom even though the audio/video clock itself is advancing.
+        controller.setVideoSurfaceVisible(false)
+        controller.play(url: mediaURL, channelName: "Video fixture", allowsExternalPlayback: false)
+        let originalItem = try XCTUnwrap(controller.player.currentItem)
+        for _ in 0..<500 where controller.player.currentTime().seconds < 0.2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.hasVideoTrack, true)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(controller.state, .playing, "An occluding TV guide must not trigger a video timeout")
+        controller.pause()
+        controller.setVideoSurfaceVisible(true)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(controller.state, .paused, "Do not restart or time out user-paused playback")
+        XCTAssertTrue(controller.player.currentItem === originalItem)
+
+        controller.resume()
+        for _ in 0..<300 where controller.state != .failed(PlaybackFailure(kind: .videoUnavailable)) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(controller.state, .failed(PlaybackFailure(kind: .videoUnavailable)))
+        XCTAssertEqual(controller.player.rate, 0)
+        XCTAssertTrue(controller.player.currentItem === originalItem, "Timeout must not silently replace or seek the stream")
+        controller.retry()
+        XCTAssertFalse(controller.player.currentItem === originalItem)
+        XCTAssertEqual(controller.state, .preparing)
+    }
+
+    @MainActor
+    func testAudioOnlyPlaybackDoesNotWaitForAnImpossibleVideoFrame() async throws {
+        let mediaURL = try await makeLocalMediaFixture(audioOnly: true)
+        defer { try? FileManager.default.removeItem(at: mediaURL.deletingLastPathComponent()) }
+        let controller = PlayerController(firstVideoFrameTimeout: .milliseconds(200))
+        defer { controller.stop() }
+        controller.play(url: mediaURL, channelName: "Audio fixture", allowsExternalPlayback: false)
+        for _ in 0..<500 where controller.player.currentTime().seconds < 0.2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(controller.hasVideoTrack, false)
+        XCTAssertEqual(controller.state, .playing)
+        XCTAssertFalse(controller.isPreparingFirstVideoFrame)
+        XCTAssertFalse(controller.hasDisplayedVideoFrame)
+    }
+
+    @MainActor
+    func testPlayingMediaContinuesBehindGuideWithoutASeekOrRestart() async throws {
+        let mediaURL = try await makeLocalMediaFixture()
+        defer { try? FileManager.default.removeItem(at: mediaURL.deletingLastPathComponent()) }
+        let controller = PlayerController()
+        let player = controller.player
+        controller.play(url: mediaURL, channelName: "Video fixture", allowsExternalPlayback: false)
+        let item = try XCTUnwrap(player.currentItem)
         func workspace(showGuide: Bool) -> some View {
             PlayerWorkspace(isShowingGuide: showGuide) {
-                PlayerViewRepresentable(player: player).frame(width: 640, height: 360)
+                PlayerViewRepresentable(controller: controller, isVideoSurfaceVisible: !showGuide)
+                    .frame(width: 640, height: 360)
             } guide: {
                 Text("Programme guide")
             }
@@ -181,13 +289,15 @@ final class PlaybackControllerTests: XCTestCase {
                               styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.contentView = host
-        defer { player.pause(); player.replaceCurrentItem(with: nil); window.close() }
+        defer { controller.stop(); window.close() }
         host.layoutSubtreeIfNeeded()
         for _ in 0..<500 where item.status == .unknown { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(item.status, .readyToPlay)
         let surface = try XCTUnwrap(videoViews(in: host).first)
-        player.play()
-        for _ in 0..<500 where player.currentTime().seconds < 0.1 { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<500 where !controller.hasDisplayedVideoFrame { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(surface.isReadyForDisplay)
+        XCTAssertTrue(controller.hasDisplayedVideoFrame, "AVKit must confirm the picture, not just a running clock")
+        XCTAssertFalse(controller.isPreparingFirstVideoFrame)
         for showGuide in [true, false, true, false] {
             let before = player.currentTime().seconds
             host.rootView = workspace(showGuide: showGuide)
@@ -200,7 +310,39 @@ final class PlaybackControllerTests: XCTestCase {
             XCTAssertEqual(player.volume, 1)
             XCTAssertGreaterThan(player.currentTime().seconds, before + 0.05,
                                  "The audio/video clock must continue advancing while the guide covers the video")
+            XCTAssertTrue(controller.hasDisplayedVideoFrame)
+            XCTAssertFalse(controller.isPreparingFirstVideoFrame)
         }
+    }
+
+    @MainActor
+    private func makeLocalMediaFixture(audioOnly: Bool = false) async throws -> URL {
+        let candidates = ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"]
+        guard let executable = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) }) else {
+            throw XCTSkip("FFmpeg is required to generate the local audio/video fixture")
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("guide-playback-\(UUID())", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let mediaURL = directory.appendingPathComponent(audioOnly ? "fixture.m4a" : "fixture.mp4")
+        let exitStatus = try await Task.detached {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            // A real video + silent audio track exercises AVKit without making
+            // noise or connecting to a provider during automated tests.
+            process.arguments = audioOnly
+                ? ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
+                   "-t", "12", "-c:a", "aac", "-movflags", "+faststart", mediaURL.path]
+                : ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=blue:s=320x180:r=25",
+                "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo", "-t", "12", "-c:v", "libx264",
+                "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", mediaURL.path]
+            process.standardOutput = FileHandle.nullDevice
+            process.standardError = FileHandle.nullDevice
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus
+        }.value
+        XCTAssertEqual(exitStatus, 0)
+        return mediaURL
     }
 
     @MainActor
@@ -465,4 +607,18 @@ final class PlaybackControllerTests: XCTestCase {
         XCTAssertEqual(failure.kind, .airPlayUnavailable)
         XCTAssertTrue(failure.message.contains("Screen Mirroring"))
     }
+}
+
+/// A deterministic early display-ready signal without a backing AVKit player
+/// binding that could emit a second readiness event later and mask the race.
+@MainActor
+private final class InitiallyReadyPlayerView: AVPlayerView {
+    private var boundPlayer: AVPlayer?
+
+    override var player: AVPlayer? {
+        get { boundPlayer }
+        set { boundPlayer = newValue }
+    }
+
+    override var isReadyForDisplay: Bool { true }
 }

@@ -677,10 +677,12 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private let streamCopyProbeTimeout: Duration
     private let temporaryRoot: URL
     private let frameRateInspector: any VideoFrameRateInspecting
+    private let startupInspector: any H264TransportStreamStartupInspecting
     private let clock = ContinuousClock()
     private var active: ActiveTranscode?
     private var activeVideoMode = VideoMode.streamCopy
     private var activeAudioMode = AudioMode.source
+    private var validatedStartupID: UUID?
     private var activeRecording: ActiveRecording?
     private var recordingMonitorTask: Task<Void, Never>?
 
@@ -689,7 +691,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         startupTimeout: Duration = FFmpegHLSAudioTranscoder.defaultStartupTimeout,
         streamCopyProbeTimeout: Duration = .seconds(12),
         temporaryRoot: URL = FileManager.default.temporaryDirectory,
-        frameRateInspector: any VideoFrameRateInspecting = AVAssetVideoFrameRateInspector()
+        frameRateInspector: any VideoFrameRateInspecting = AVAssetVideoFrameRateInspector(),
+        startupInspector: any H264TransportStreamStartupInspecting = H264TransportStreamStartupInspector()
     ) {
         precondition(startupTimeout > .zero)
         precondition(streamCopyProbeTimeout > .zero)
@@ -698,6 +701,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         self.streamCopyProbeTimeout = streamCopyProbeTimeout
         self.temporaryRoot = temporaryRoot
         self.frameRateInspector = frameRateInspector
+        self.startupInspector = startupInspector
     }
 
     /// Starts a rolling HLS rendition that copies H.264 video and converts the
@@ -907,6 +911,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     }
 
     func stop() async {
+        validatedStartupID = nil
         recordingMonitorTask?.cancel()
         recordingMonitorTask = nil
         if let activeRecording {
@@ -1232,6 +1237,28 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                 within: active.ownedProcess.directory,
                 minimumSegmentCount: minimumSegmentCount
             ) {
+                if validatedStartupID != id {
+                    guard let firstSegment = Self.segmentBitrateMeasurements(
+                        mediaPlaylistURL: active.mediaPlaylistURL,
+                        within: active.ownedProcess.directory,
+                        minimumSegmentCount: minimumSegmentCount
+                    )?.firstSegmentURL else {
+                        throw FFmpegHLSAudioTranscoderError.processFailed(.incompatibleVideoCodec)
+                    }
+                    // A transport packet/keyframe flag is not proof that a
+                    // copied open-GOP feed can initialize Apple's decoder.
+                    // Inspect the first video access unit before exposing any
+                    // local or receiver URL. This actor does bounded file I/O,
+                    // never main-thread work or a second probing connection.
+                    let startup = try? startupInspector.inspect(segmentURL: firstSegment)
+                    guard startup == .cleanIDR else {
+                        if videoMode == .streamCopy {
+                            throw TranscodeAttemptError.videoRequiresTranscode
+                        }
+                        throw FFmpegHLSAudioTranscoderError.processFailed(.incompatibleVideoCodec)
+                    }
+                    validatedStartupID = id
+                }
                 let published = await Self.publishReceiverMaster(
                     generatedMasterPlaylistURL: active.generatedMasterPlaylistURL,
                     receiverMasterPlaylistURL: active.receiverMasterPlaylistURL,

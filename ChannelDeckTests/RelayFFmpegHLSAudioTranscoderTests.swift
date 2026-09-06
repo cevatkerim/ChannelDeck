@@ -3,6 +3,49 @@ import XCTest
 @testable import ChannelDeck
 
 final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
+    func testNonIDRCopiedVideoIsEncodedBeforeLocalPublication() async throws {
+        let root = try makeTemporaryDirectory(named: "non-idr-start")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        let hardwareOutput = Self.successfulOutputScript.replacingOccurrences(
+            of: "'transport-stream-%s'", with: "'clean-idr-%s'"
+        )
+        let script = "#!/bin/sh\narguments=\" $* \"\ncase \"$arguments\" in\n*\" -c:v h264_videotoolbox \"*)\n"
+            + hardwareOutput + "\n;;\n*)\n" + Self.successfulOutputScript + "\n;;\nesac\n"
+        try writeExecutable(script, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: ModeAwareStartupInspector()
+        )
+        let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
+        let directory = session.playlistURL.deletingLastPathComponent()
+        let first = directory.appendingPathComponent("segment-0-000000000.ts")
+        XCTAssertEqual(try ModeAwareStartupInspector().inspect(segmentURL: first), .cleanIDR)
+        let original = try String(contentsOf: directory.appendingPathComponent("source-segment-000000000.ts"), encoding: .utf8)
+        XCTAssertEqual(original, "source-transport-stream-0", "Decoder compatibility must not alter original recording output")
+        try await transcoder.waitForAirPlayReadiness()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: session.playlistURL.path))
+        await transcoder.stop()
+    }
+
+    func testUnusableHardwareStartFailsWithoutPublishingBlackPlayback() async throws {
+        let root = try makeTemporaryDirectory(named: "invalid-encoded-start")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable("#!/bin/sh\narguments=\" $* \"\n" + Self.successfulOutputScript, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .missingParameterSets)
+        )
+        await XCTAssertThrowsTranscoderError(.processFailed(.incompatibleVideoCodec)) {
+            _ = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
+        }
+        XCTAssertFalse(try FileManager.default.contentsOfDirectory(atPath: root.path).contains { $0.hasPrefix("ChannelDeck-ffmpeg.") })
+        await transcoder.stop()
+    }
+
     func testRealFFmpegStartsLocalPlaybackBeforeReceiverBufferWithoutSecondInput() async throws {
         guard let ffmpeg = DefaultFFmpegExecutableLocator().executableURL() else {
             throw XCTSkip("A local FFmpeg installation is required for the synthetic media integration test.")
@@ -68,7 +111,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         try writeExecutable(Self.oneSegmentFakeFFmpeg, to: executable)
         let transcoder = FFmpegHLSAudioTranscoder(
             locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
-            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
         let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
         let directory = session.playlistURL.deletingLastPathComponent()
@@ -107,7 +151,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             // This tests receiver timeout retention, not the speed of launching
             // a shell fixture on a busy test machine.
             locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(2),
-            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
         let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
         let id = UUID()
@@ -130,7 +175,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         try writeExecutable(Self.oneSegmentFakeFFmpeg, to: executable)
         let transcoder = FFmpegHLSAudioTranscoder(
             locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
-            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
         let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
         let readiness = Task { try await transcoder.waitForAirPlayReadiness() }
@@ -155,7 +201,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
         try writeExecutable(script, to: executable)
         let transcoder = FFmpegHLSAudioTranscoder(
             locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
-            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
         let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
         let media = try String(contentsOf: session.playlistURL.deletingLastPathComponent().appendingPathComponent("media-0.m3u8"), encoding: .utf8)
@@ -231,7 +278,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             locator: FixedFFmpegLocator(url: executable),
             startupTimeout: .seconds(3),
             temporaryRoot: root,
-            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 59.94)
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 59.94),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
 
         let session = try await transcoder.start(relayURL: Self.relayURL)
@@ -285,7 +333,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             locator: FixedFFmpegLocator(url: executable),
             startupTimeout: .seconds(3),
             temporaryRoot: root,
-            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
         let session = try await transcoder.start(relayURL: Self.relayURL)
         let liveDirectory = session.playlistURL.deletingLastPathComponent()
@@ -360,7 +409,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             locator: FixedFFmpegLocator(url: executable),
             startupTimeout: .seconds(3),
             temporaryRoot: root,
-            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
         _ = try await transcoder.start(relayURL: Self.relayURL)
         let recordingID = UUID()
@@ -416,7 +466,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             locator: FixedFFmpegLocator(url: executable),
             startupTimeout: .seconds(3),
             temporaryRoot: root,
-            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 50)
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 50),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
 
         let session = try await transcoder.start(relayURL: Self.relayURL)
@@ -443,7 +494,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             startupTimeout: .seconds(3),
             streamCopyProbeTimeout: .milliseconds(150),
             temporaryRoot: root,
-            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
 
         let session = try await transcoder.start(relayURL: Self.relayURL)
@@ -468,7 +520,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             locator: FixedFFmpegLocator(url: executable),
             startupTimeout: .seconds(3),
             temporaryRoot: root,
-            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
 
         let session = try await transcoder.start(relayURL: Self.relayURL)
@@ -541,7 +594,8 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
             locator: FixedFFmpegLocator(url: executable),
             startupTimeout: .seconds(3),
             temporaryRoot: root,
-            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+            frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25),
+            startupInspector: FixedStartupInspector(result: .cleanIDR)
         )
 
         let session = try await transcoder.startMPEGTS { consumer in
@@ -985,6 +1039,19 @@ private struct FixedVideoFrameRateInspector: VideoFrameRateInspecting {
 
     func frameRate(forLocalSegment segmentURL: URL) async -> Double? {
         frameRate
+    }
+}
+
+private struct FixedStartupInspector: H264TransportStreamStartupInspecting {
+    let result: H264TransportStreamStartupResult
+
+    func inspect(segmentURL: URL) throws -> H264TransportStreamStartupResult { result }
+}
+
+private struct ModeAwareStartupInspector: H264TransportStreamStartupInspecting {
+    func inspect(segmentURL: URL) throws -> H264TransportStreamStartupResult {
+        let bytes = try Data(contentsOf: segmentURL)
+        return String(decoding: bytes, as: UTF8.self).hasPrefix("clean-idr-") ? .cleanIDR : .nonIDRStart
     }
 }
 

@@ -12,6 +12,7 @@ public struct PlaybackFailure: Error, Equatable, Sendable {
         case unsupportedFormat
         case protectedContent
         case airPlayUnavailable
+        case videoUnavailable
         case unknown
     }
 
@@ -31,6 +32,8 @@ public struct PlaybackFailure: Error, Equatable, Sendable {
             "This stream cannot be played because its content is protected."
         case .airPlayUnavailable:
             "AirPlay cannot play this stream directly. Try macOS Screen Mirroring or an end-to-end HTTPS stream."
+        case .videoUnavailable:
+            "The channel connected, but its picture could not be displayed. Try again to reconnect."
         case .unknown:
             "The channel could not be played."
         }
@@ -175,6 +178,33 @@ public final class PlayerController {
     public private(set) var airPlayVideoCompatibility: AirPlayVideoCompatibility = .unavailable
     public private(set) var currentStreamUsesInsecureTransport = false
     private(set) var liveDVRState: LiveDVRState = .unavailable
+    private(set) var hasDisplayedVideoFrame = false
+    private(set) var hasVideoTrack: Bool?
+
+    /// A running playback clock does not mean AVKit has decoded a picture.
+    /// Keep initial loading visible until the renderer confirms its first frame.
+    /// Once shown, transient renderer changes (guide/PiP/route changes) must not
+    /// turn a normal paused or rewound session back into startup.
+    var isPreparingFirstVideoFrame: Bool {
+        switch state {
+        case .preparing, .buffering, .playing:
+            return Self.requiresFirstVideoFrame(
+                hasVideoTrack: hasVideoTrack,
+                hasDisplayedVideoFrame: hasDisplayedVideoFrame,
+                isExternalPlaybackActive: isExternalPlaybackActive
+            )
+        default:
+            return false
+        }
+    }
+
+    static func requiresFirstVideoFrame(
+        hasVideoTrack: Bool?,
+        hasDisplayedVideoFrame: Bool,
+        isExternalPlaybackActive: Bool
+    ) -> Bool {
+        hasVideoTrack != false && !hasDisplayedVideoFrame && !isExternalPlaybackActive
+    }
 
     /// A privacy-safe explanation for the common cases where local playback
     /// works but direct AirPlay Video cannot complete its receiver handoff.
@@ -198,9 +228,15 @@ public final class PlayerController {
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var userPaused = false
     @ObservationIgnored private var quickStartPending = false
+    @ObservationIgnored private var videoTrackTask: Task<Void, Never>?
+    @ObservationIgnored private var firstVideoFrameTask: Task<Void, Never>?
+    @ObservationIgnored private var firstVideoFrameFailed = false
+    @ObservationIgnored private var isVideoSurfaceVisible = true
+    @ObservationIgnored private let firstVideoFrameTimeout: Duration
 
-    public init(player: AVPlayer = AVPlayer()) {
+    public init(player: AVPlayer = AVPlayer(), firstVideoFrameTimeout: Duration = .seconds(15)) {
         self.player = player
+        self.firstVideoFrameTimeout = firstVideoFrameTimeout
         player.allowsExternalPlayback = true
         player.automaticallyWaitsToMinimizeStalling = true
         observePlayer()
@@ -230,6 +266,20 @@ public final class PlayerController {
         userPaused = true
         player.pause()
         refreshState()
+    }
+
+    /// Reports from a dismantled view or an earlier channel are ignored. False
+    /// is intentionally not destructive after the first frame has been shown.
+    func reportVideoDisplayReady(_ ready: Bool, for item: AVPlayerItem) {
+        guard ready, player.currentItem === item, !firstVideoFrameFailed else { return }
+        hasDisplayedVideoFrame = true
+        firstVideoFrameTask?.cancel()
+        firstVideoFrameTask = nil
+    }
+
+    func setVideoSurfaceVisible(_ visible: Bool) {
+        isVideoSurfaceVisible = visible
+        updateFirstVideoFrameTimeout()
     }
 
     /// Enable handoff after the relay's receiver buffer is ready, without
@@ -312,6 +362,9 @@ public final class PlayerController {
         airPlayVideoCompatibility = .unavailable
         currentStreamUsesInsecureTransport = false
         liveDVRState = .unavailable
+        hasDisplayedVideoFrame = false
+        hasVideoTrack = nil
+        firstVideoFrameFailed = false
         userPaused = false
         state = .idle
     }
@@ -328,6 +381,9 @@ public final class PlayerController {
         player.allowsExternalPlayback = request.allowsExternalPlayback
         currentStreamUsesInsecureTransport = request.url.scheme?.lowercased() == "http"
         liveDVRState = .unavailable
+        hasDisplayedVideoFrame = false
+        hasVideoTrack = nil
+        firstVideoFrameFailed = false
         userPaused = false
         state = .preparing
 
@@ -341,6 +397,7 @@ public final class PlayerController {
         player.replaceCurrentItem(with: item)
         player.play()
         evaluateAirPlayCompatibility(of: item.asset, generation: generation)
+        evaluateVideoTracks(of: item, generation: generation)
     }
 
     private func observePlayer() {
@@ -381,6 +438,9 @@ public final class PlayerController {
             },
             item.observe(\.seekableTimeRanges, options: [.initial, .new]) { _, _ in
                 notifyChange()
+            },
+            item.observe(\.loadedTimeRanges, options: [.initial, .new]) { _, _ in
+                notifyChange()
             }
         ]
 
@@ -397,6 +457,10 @@ public final class PlayerController {
     }
 
     private func removeItemObservers() {
+        videoTrackTask?.cancel()
+        videoTrackTask = nil
+        firstVideoFrameTask?.cancel()
+        firstVideoFrameTask = nil
         airPlayCompatibilityTask?.cancel()
         airPlayCompatibilityTask = nil
         itemObservations.forEach { $0.invalidate() }
@@ -409,6 +473,7 @@ public final class PlayerController {
 
     private func refreshExternalPlaybackState() {
         isExternalPlaybackActive = player.isExternalPlaybackActive
+        updateFirstVideoFrameTimeout()
     }
 
     private func observePlaybackTime() {
@@ -418,6 +483,7 @@ public final class PlayerController {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refreshLiveDVRState()
+                self?.updateFirstVideoFrameTimeout()
             }
         }
     }
@@ -462,15 +528,69 @@ public final class PlayerController {
         }
     }
 
+    private func evaluateVideoTracks(of item: AVPlayerItem, generation: UUID) {
+        videoTrackTask = Task { @MainActor [weak self] in
+            let containsVideo: Bool
+            do {
+                let tracks = try await item.asset.loadTracks(withMediaType: .video)
+                try Task.checkCancellation()
+                containsVideo = !tracks.isEmpty
+            } catch is CancellationError {
+                return
+            } catch {
+                // Do not strand audio-only/indeterminate assets behind a video
+                // spinner if their track metadata cannot be loaded. AVPlayer's
+                // own item errors still report unsupported or broken media.
+                containsVideo = item.presentationSize.width > 0 && item.presentationSize.height > 0
+            }
+            guard let self, self.observationGeneration == generation else { return }
+            self.hasVideoTrack = containsVideo
+            self.updateFirstVideoFrameTimeout()
+        }
+    }
+
+    private func updateFirstVideoFrameTimeout() {
+        guard isPreparingFirstVideoFrame, hasVideoTrack == true, isVideoSurfaceVisible,
+              state == .playing, !userPaused,
+              let item = player.currentItem, item.status == .readyToPlay,
+              player.currentTime().seconds.isFinite, player.currentTime().seconds > 0 else {
+            firstVideoFrameTask?.cancel()
+            firstVideoFrameTask = nil
+            return
+        }
+        guard firstVideoFrameTask == nil else { return }
+        let generation = observationGeneration
+        let startingTime = player.currentTime().seconds
+        let timeout = firstVideoFrameTimeout
+        firstVideoFrameTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: timeout) } catch { return }
+            guard let self, self.observationGeneration == generation else { return }
+            self.firstVideoFrameTask = nil
+            guard self.player.currentItem === item,
+                  self.isPreparingFirstVideoFrame, self.state == .playing,
+                  self.isVideoSurfaceVisible, !self.userPaused, !self.player.isExternalPlaybackActive,
+                  self.player.currentTime().seconds > startingTime else { return }
+            self.firstVideoFrameFailed = true
+            self.player.pause()
+            self.state = .failed(PlaybackFailure(kind: .videoUnavailable))
+        }
+    }
+
     private func handleItemFailure() {
         player.pause()
         state = .failed(PlaybackFailure(error: player.currentItem?.error))
     }
 
     private func refreshState() {
+        defer { updateFirstVideoFrameTimeout() }
         refreshLiveDVRState()
         guard let item = player.currentItem else {
             state = .idle
+            return
+        }
+
+        guard !firstVideoFrameFailed else {
+            state = .failed(PlaybackFailure(kind: .videoUnavailable))
             return
         }
 
@@ -486,7 +606,8 @@ public final class PlayerController {
                 return
             }
 
-            if quickStartPending, !item.isPlaybackBufferEmpty {
+            if quickStartPending, !item.isPlaybackBufferEmpty,
+               Self.hasBufferedMedia(at: player.currentTime().seconds, ranges: item.loadedTimeRanges.map(\.timeRangeValue)) {
                 quickStartPending = false
                 player.playImmediately(atRate: 1)
             }
@@ -505,6 +626,16 @@ public final class PlayerController {
             }
         @unknown default:
             state = .failed(PlaybackFailure(kind: .unknown))
+        }
+    }
+
+    static func hasBufferedMedia(at currentTime: TimeInterval, ranges: [CMTimeRange]) -> Bool {
+        guard currentTime.isFinite else { return false }
+        return ranges.contains { range in
+            let start = range.start.seconds
+            let duration = range.duration.seconds
+            return start.isFinite && duration.isFinite && duration > 0
+                && currentTime >= start - 0.25 && currentTime < start + duration
         }
     }
 }
