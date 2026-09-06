@@ -39,6 +39,7 @@ struct SourceDraft: Equatable {
     var displayName = ""
     var playlistURL = ""
     var epgURL = ""
+    var guideMode: GuideProviderMode = .playlist
 }
 
 enum SourceURLPolicy {
@@ -225,6 +226,64 @@ final class AppModel {
     var isSavingSource = false
     var sourceDraft = SourceDraft()
     var sourceEditorError: String?
+    var guideResults: [UUID: OpenEPGResult] = [:]
+    var refreshingGuides: Set<UUID> = []
+    var editingGuideSourceID: UUID? { editingSourceID }
+
+    func guidePreferences(for sourceID: UUID) -> GuidePreferences {
+        preferenceStore.data(forKey: "channelDeck.guide.\(sourceID.uuidString)")
+            .flatMap { try? JSONDecoder().decode(GuidePreferences.self, from: $0) } ?? GuidePreferences()
+    }
+
+    func saveGuidePreferences(_ preferences: GuidePreferences, for sourceID: UUID) {
+        if let data = try? JSONEncoder().encode(preferences) {
+            preferenceStore.set(data, forKey: "channelDeck.guide.\(sourceID.uuidString)")
+        }
+    }
+
+    func setGuideMatch(_ matchID: String?, channelID: String, sourceID: UUID) async {
+        var preferences = guidePreferences(for: sourceID)
+        preferences.overrides[channelID] = matchID
+        saveGuidePreferences(preferences, for: sourceID)
+        if preferences.managedChannels.contains(channelID) {
+            for record in (try? programmesStored(for: sourceID)) ?? [] where record.channelStableID == channelID {
+                modelContext.delete(record)
+            }
+            try? modelContext.save()
+            reloadProgrammeState()
+        }
+        await refreshGuideOnly(sourceID)
+    }
+
+    func refreshGuideOnly(_ sourceID: UUID) async {
+        guard let playlist = runtimePlaylists[sourceID], !refreshingGuides.contains(sourceID) else { return }
+        do { try await refreshEPG(for: sourceID, playlist: playlist) }
+        catch {
+            sourceEditorError = "Guide refresh failed: \(safeMessage(for: error))"
+            source(withID: sourceID)?.lastErrorMessage = sourceEditorError
+            try? modelContext.save()
+            reloadCoreState()
+        }
+    }
+
+    private func startGuideRefreshTimer() {
+        guard guideRefreshTask == nil else { return }
+        guideRefreshTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard self != nil else { return }
+                await self?.refreshDueGuides()
+                do { try await Task.sleep(for: .seconds(3600)) } catch { return }
+            }
+        }
+    }
+
+    private func refreshDueGuides() async {
+        for source in sources where guidePreferences(for: source.id).mode != .playlist {
+            if refreshIsDue(lastRefresh: source.lastEPGRefresh, interval: 24 * 3600) {
+                await refreshGuideOnly(source.id)
+            }
+        }
+    }
     var presentedAlert: AppAlert?
     var playbackPreparation: PlaybackPreparation?
     var playbackIssue: PlaybackIssue?
@@ -272,6 +331,7 @@ final class AppModel {
     @ObservationIgnored private var sourceNameByID: [UUID: String] = [:]
     @ObservationIgnored private var channelSearchIndex = ChannelSearchIndex()
     @ObservationIgnored private var channelSearchTask: Task<Void, Never>?
+    @ObservationIgnored private var guideRefreshTask: Task<Void, Never>?
     private var programmeGuideIndex = ProgrammeGuideIndex()
     @ObservationIgnored private var guideSearchIndex = GuideSearchIndex()
 
@@ -426,6 +486,7 @@ final class AppModel {
         await airPlayRelayController.bootstrap()
 
         if sources.isEmpty {
+            startGuideRefreshTimer()
             isLoadingProgrammeGuide = false
             beginAddingSource()
             return
@@ -444,6 +505,8 @@ final class AppModel {
         // Cached content is ready to use. Network refreshes continue with the
         // normal interface visible instead of extending the launch screen.
         isBootstrapping = false
+
+        startGuideRefreshTimer()
 
         for source in sources {
             if refreshIsDue(lastRefresh: source.lastPlaylistRefresh, interval: 6 * 60 * 60) {
@@ -940,6 +1003,7 @@ final class AppModel {
                 playlistURL: playlistURL.absoluteString,
                 epgURL: epgURL?.absoluteString ?? ""
             )
+            sourceDraft.guideMode = guidePreferences(for: source.id).mode
             sourceEditorError = nil
             isPresentingSourceEditor = true
         } catch {
@@ -949,6 +1013,10 @@ final class AppModel {
 
     func commitSourceDraft() async -> Bool {
         sourceEditorError = nil
+        if let sourceID = editingSourceID, refreshingGuides.contains(sourceID) {
+            sourceEditorError = "The guide is refreshing. Please wait for it to finish before saving changes."
+            return false
+        }
         guard let playlistURL = SourceURLPolicy.validatedURL(from: sourceDraft.playlistURL) else {
             sourceEditorError = "Enter a valid HTTP or HTTPS playlist URL."
             return false
@@ -980,6 +1048,10 @@ final class AppModel {
             try await keychain.setEPGURL(epgOverride, for: sourceID)
             try await encryptedCache.store(payload.data, for: sourceID)
 
+            var preferences = guidePreferences(for: sourceID)
+            preferences.mode = sourceDraft.guideMode
+            saveGuidePreferences(preferences, for: sourceID)
+
             let sourceRecord: PlaylistSourceRecord
             if let existing = source(withID: sourceID) {
                 sourceRecord = existing
@@ -997,20 +1069,16 @@ final class AppModel {
             sourceRecord.playlistETag = payload.validators.etag
             sourceRecord.playlistLastModified = payload.validators.lastModified
             sourceRecord.lastErrorMessage = nil
+            sourceRecord.epgETag = nil
+            sourceRecord.epgLastModified = nil
             try modelContext.save()
             try apply(parsed, to: sourceID)
 
             sidebarSelection = .source(sourceID)
             reloadCoreState()
 
-            do {
-                try await refreshEPG(for: sourceID, playlist: parsed)
-            } catch {
-                if let updatedSource = source(withID: sourceID) {
-                    updatedSource.lastErrorMessage = "Playlist loaded, but the guide could not refresh: \(safeMessage(for: error))"
-                    try? modelContext.save()
-                }
-            }
+            // Guide downloads can span many countries. Do not hold the editor open while they run.
+            Task { [weak self] in await self?.refreshGuideOnly(sourceID) }
             reloadCoreState()
             editingSourceID = nil
             sourceDraft = SourceDraft()
@@ -1063,6 +1131,8 @@ final class AppModel {
             try modelContext.save()
 
             runtimePlaylists[sourceID] = nil
+            guideResults[sourceID] = nil
+            preferenceStore.removeObject(forKey: "channelDeck.guide.\(sourceID.uuidString)")
             streamURLs = streamURLs.filter { key, _ in
                 channelByID[key]?.sourceID != sourceID
             }
@@ -1100,18 +1170,68 @@ final class AppModel {
     }
 
     private func refreshEPG(for sourceID: UUID, playlist: ParsedPlaylist) async throws {
+        guard refreshingGuides.insert(sourceID).inserted else { return }
+        defer { refreshingGuides.remove(sourceID) }
+        var preferences = guidePreferences(for: sourceID)
+        if preferences.mode == .playlist {
+            for record in try programmesStored(for: sourceID) where preferences.managedChannels.contains(record.channelStableID) {
+                modelContext.delete(record)
+            }
+            preferences.managedChannels = []
+            saveGuidePreferences(preferences, for: sourceID)
+            try modelContext.save()
+            reloadProgrammeState()
+            _ = try await refreshPlaylistEPG(for: sourceID, playlist: playlist)
+            return
+        }
+        var providerError: Error?
+        if preferences.mode == .automatic {
+            do {
+                if try await refreshPlaylistEPG(for: sourceID, playlist: playlist) {
+                    preferences.managedChannels = guidePreferences(for: sourceID).managedChannels
+                }
+            }
+            catch { providerError = error }
+        }
+        let result = try await OpenEPGService.shared.refresh(channels: playlist.channels, sourceID: sourceID, preferences: preferences)
+        guard source(withID: sourceID) != nil, runtimePlaylists[sourceID] == playlist else { return }
+        guideResults[sourceID] = result
+        let existing = try programmesStored(for: sourceID)
+        let covered = Set(existing.filter { $0.endDate > .now && !preferences.managedChannels.contains($0.channelStableID) }.map(\.channelStableID))
+        let supplemental = result.programmes.filter {
+            preferences.mode == .openEPG || !covered.contains($0.channelID)
+                || preferences.overrides[$0.channelID].map { !$0.isEmpty } == true
+        }
+        // Never erase a working guide because a public feed failed or went stale.
+        let replacing = Set(supplemental.map(\.channelID))
+        for record in existing where replacing.contains(record.channelStableID) { modelContext.delete(record) }
+        try apply(supplemental, to: sourceID, replacingAll: false, usesStableIDs: true)
+        preferences.managedChannels.formUnion(replacing)
+        saveGuidePreferences(preferences, for: sourceID)
+        source(withID: sourceID)?.lastEPGRefresh = .now
+        var warnings = result.warnings
+        if let providerError { warnings.insert("Playlist guide unavailable: \(safeMessage(for: providerError))", at: 0) }
+        source(withID: sourceID)?.lastErrorMessage = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
+        try modelContext.save()
+        reloadLocalState()
+    }
+
+    private func refreshPlaylistEPG(for sourceID: UUID, playlist: ParsedPlaylist) async throws -> Bool {
         let override = try await keychain.epgURL(for: sourceID)
-        guard let epgURL = override ?? playlist.epgURLs.first else { return }
-        guard let sourceRecord = source(withID: sourceID) else { return }
+        guard let epgURL = override ?? playlist.epgURLs.first else { return false }
+        guard let sourceRecord = source(withID: sourceID) else { return false }
 
         let validators = HTTPValidators(etag: sourceRecord.epgETag, lastModified: sourceRecord.epgLastModified)
         let result = try await httpClient.fetch(epgURL, validators: validators, policy: .epg)
         let responseValidators: HTTPValidators
+        let changed: Bool
 
         switch result {
         case .notModified(let received):
+            changed = false
             responseValidators = received
         case .modified(let payload):
+            changed = true
             responseValidators = payload.validators
             let rawData = payload.data
             let needsGzip = epgURL.pathExtension.lowercased() == "gz"
@@ -1123,7 +1243,7 @@ final class AppModel {
                 return rawData
             }.value
 
-            let channelIDs = Set(playlist.channels.compactMap(\.tvgID))
+            let channelIDs = Set(playlist.channels.filter(EPGMatcher.isLive).compactMap(\.tvgID))
             let lowerBound = Date.now.addingTimeInterval(-2 * 60 * 60)
             let upperBound = Date.now.addingTimeInterval(36 * 60 * 60)
             let parsedProgrammes = try await Task.detached(priority: .utility) { [xmlTVParser] in
@@ -1133,15 +1253,22 @@ final class AppModel {
                     timeWindow: lowerBound ..< upperBound
                 )
             }.value
-            try apply(parsedProgrammes, to: sourceID)
+            var preferences = guidePreferences(for: sourceID)
+            let incomingIDs = Set(parsedProgrammes.map(\.channelID))
+            let providerChannels = Set(channels.filter { $0.sourceID == sourceID && incomingIDs.contains($0.tvgID ?? "") }.map(\.stableID))
+            let preserved = preferences.mode == .automatic ? preferences.managedChannels.subtracting(providerChannels) : []
+            try apply(parsedProgrammes, to: sourceID, preservingChannels: preserved)
+            preferences.managedChannels = preserved
+            saveGuidePreferences(preferences, for: sourceID)
         }
 
-        guard let refreshedSource = source(withID: sourceID) else { return }
+        guard let refreshedSource = source(withID: sourceID) else { return false }
         refreshedSource.epgETag = responseValidators.etag
         refreshedSource.epgLastModified = responseValidators.lastModified
         refreshedSource.lastEPGRefresh = Date.now
         try modelContext.save()
         reloadLocalState()
+        return changed
     }
 
     private func apply(_ playlist: ParsedPlaylist, to sourceID: UUID) throws {
@@ -1199,13 +1326,14 @@ final class AppModel {
         reloadCoreState()
     }
 
-    private func apply(_ parsedProgrammes: [ParsedProgramme], to sourceID: UUID) throws {
-        for record in try programmesStored(for: sourceID) {
+    private func apply(_ parsedProgrammes: [ParsedProgramme], to sourceID: UUID, replacingAll: Bool = true, usesStableIDs: Bool = false, preservingChannels: Set<String> = []) throws {
+        for record in try programmesStored(for: sourceID) where replacingAll && !preservingChannels.contains(record.channelStableID) {
             modelContext.delete(record)
         }
 
-        let channelIDs = Dictionary(grouping: channels.filter { $0.sourceID == sourceID && $0.tvgID != nil }) {
-            $0.tvgID ?? ""
+        let liveIDs = Set((runtimePlaylists[sourceID]?.channels ?? []).filter(EPGMatcher.isLive).map { $0.stableKey(sourceID: sourceID).rawValue })
+        let channelIDs = Dictionary(grouping: channels.filter { $0.sourceID == sourceID && liveIDs.contains($0.stableID) && (usesStableIDs || $0.tvgID != nil) }) {
+            usesStableIDs ? $0.stableID : ($0.tvgID ?? "")
         }
         for programme in parsedProgrammes {
             guard let matchingChannels = channelIDs[programme.channelID] else { continue }

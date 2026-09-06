@@ -50,6 +50,22 @@ Screenshots show the current source build using an existing library. Channel log
 - Choose comfortable or compact channel rows, with matching programme text sizes, and System, Light, or Dark appearance.
 - See immediate connection progress, cancel a pending tune-in, and refresh a missing stream directly in the player.
 
+### Fill in missing programme guides
+
+In a playlist's **Edit → Programme guide**, choose:
+
+- **Playlist / custom URL** — keep using the supplied XMLTV guide or enter an override. This remains the default; existing playlists do not contact a new provider without opting in.
+- **Automatic** — keep the playlist guide and supplement live channels without current listings using Open-EPG.
+- **Open-EPG** — discover country feeds and match live channels using [Open-EPG](https://www.open-epg.com/app/epgguide.php).
+
+Save the playlist, then reopen its guide settings and choose **Review matches…**. ChannelDeck matches exact IDs and normalized names within the detected country, ignoring common country and picture-quality labels while preserving channel numbers. Fuzzy candidates require confirmation. Choose a guide manually, disable an incorrect match, or restore automatic matching; corrections are saved across refreshes. **Load guide matches…** restores the review list after restarting.
+
+Movie/series categories, positive-duration entries, episodic names, common video files, and provider `/movie/` or `/series/` routes are excluded before Open-EPG discovery. Country detection uses channel IDs, country prefixes/suffixes, and category names. Unidentified countries and ambiguous channels stay unmatched rather than receiving a guessed schedule.
+
+The integration discovers the provider's published catalogue, downloads only relevant country feeds, and shares an on-disk 24-hour cache across playlists. Background checks refresh opted-in guides while the app is running; manual playlist refreshes also respect the daily download limit. Failed feeds do not erase working Open-EPG listings, and cached data is used when available. Coverage depends on the provider: some countries/channels are absent or stale, and a channel-ID match does not guarantee a current programme listing. Feed problems appear in guide matching and playlist status.
+
+Matching happens locally. Open-EPG receives requests for public country files, not playlist URLs, credentials, or channel lists. It can see your IP address and which feeds you request. ChannelDeck is not affiliated with Open-EPG.
+
 ### Watch live TV like live TV
 
 - Play through macOS-native AVKit and AVFoundation controls.

@@ -4,6 +4,7 @@ struct SourceEditorView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
     @State private var showsGuideOptions = false
+    @State private var showsMatches = false
     @FocusState private var focusedField: Field?
     private enum Field { case name, playlist, guide }
 
@@ -51,6 +52,11 @@ struct SourceEditorView: View {
                         .accessibilityLabel("Playlist URL")
                 }
                 DisclosureGroup(isExpanded: $showsGuideOptions) {
+                    Picker("Guide provider", selection: $appModel.sourceDraft.guideMode) {
+                        ForEach(GuideProviderMode.allCases) { mode in Text(mode.title).tag(mode) }
+                    }
+                    .padding(.top, 12)
+                    if appModel.sourceDraft.guideMode != .openEPG {
                     field(
                         "Programme guide URL", hint: "Leave blank to use the guide included in your playlist.",
                         field: .guide
@@ -61,6 +67,29 @@ struct SourceEditorView: View {
                             .accessibilityLabel("Programme guide URL override")
                     }
                     .padding(.top, 12)
+                    }
+                    if appModel.sourceDraft.guideMode != .playlist {
+                        Text("Open-EPG downloads relevant country guides once daily. Matching stays on your Mac; playlist credentials are never sent. Movies and series are excluded.")
+                            .font(.caption).foregroundStyle(ChannelDeckStyle.muted)
+                            .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+                        Link("About Open-EPG", destination: URL(string: "https://www.open-epg.com/app/epgguide.php")!)
+                            .font(.caption)
+                        if let sourceID = appModel.editingGuideSourceID {
+                            if let result = appModel.guideResults[sourceID] {
+                                Text("\(result.rows.filter { $0.match != nil }.count) of \(result.rows.count) live channels matched to Open-EPG")
+                                    .font(.caption)
+                                Button("Review matches…") { showsMatches = true }
+                            } else {
+                                if appModel.guidePreferences(for: sourceID).mode != .playlist {
+                                    Button("Load guide matches…") { Task { await appModel.refreshGuideOnly(sourceID) } }
+                                        .disabled(appModel.refreshingGuides.contains(sourceID))
+                                    if appModel.refreshingGuides.contains(sourceID) { ProgressView().controlSize(.small) }
+                                } else {
+                                    Text("Save changes to discover guides and review matches.").font(.caption)
+                                }
+                            }
+                        }
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Text("Programme guide").font(.system(size: 12, weight: .medium))
@@ -127,8 +156,11 @@ struct SourceEditorView: View {
         .background(ChannelDeckStyle.surface)
         .tint(ChannelDeckStyle.accent)
         .interactiveDismissDisabled(appModel.isSavingSource)
+        .sheet(isPresented: $showsMatches) {
+            if let sourceID = appModel.editingGuideSourceID { GuideMatchingView(sourceID: sourceID) }
+        }
         .onAppear {
-            showsGuideOptions = !appModel.sourceDraft.epgURL.isEmpty
+            showsGuideOptions = !appModel.sourceDraft.epgURL.isEmpty || appModel.sourceDraft.guideMode != .playlist
             focusedField = appModel.isEditingSource ? .playlist : .name
         }
     }

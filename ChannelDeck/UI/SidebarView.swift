@@ -152,7 +152,7 @@ struct SidebarView: View {
                         .help(message)
                         .accessibilityLabel("Playlist needs attention: \(message)")
                 }
-                if appModel.refreshingSourceIDs.contains(source.id) {
+                if appModel.refreshingSourceIDs.contains(source.id) || appModel.refreshingGuides.contains(source.id) {
                     ProgressView().controlSize(.mini).frame(width: 30)
                         .accessibilityLabel("Refreshing \(source.displayName)")
                 } else {
