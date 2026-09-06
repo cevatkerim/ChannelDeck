@@ -143,9 +143,15 @@ actor HLSRelayServer {
         _ = try await startIfNeeded()
     }
 
-    func relayURL(for sourceURL: URL) async throws -> HLSRelaySessionDescriptor {
+    func relayURL(for sourceURL: URL, preferEarlyPlayback: Bool = false) async throws -> HLSRelaySessionDescriptor {
         let origin = try await startIfNeeded()
-        return try await sessionCoordinator.prepare(sourceURL: sourceURL, relayOrigin: origin)
+        return try await sessionCoordinator.prepare(
+            sourceURL: sourceURL, relayOrigin: origin, preferEarlyPlayback: preferEarlyPlayback
+        )
+    }
+
+    func waitForAirPlayReadiness() async throws {
+        try await sessionCoordinator.waitForAirPlayReadiness()
     }
 
     func beginRecording(
@@ -296,6 +302,7 @@ actor HLSRelaySessionCoordinator {
     private let audioTranscoder: (any HLSAudioTranscoding)?
     private let mpegTSStreamer: (any MPEGTSUpstreamStreaming)?
     private let preparationTimeout: Duration
+    private var preparationID = UUID()
 
     init(
         core: HLSRelayCore,
@@ -310,15 +317,24 @@ actor HLSRelaySessionCoordinator {
         self.preparationTimeout = preparationTimeout
     }
 
-    func prepare(sourceURL: URL, relayOrigin: URL) async throws -> HLSRelaySessionDescriptor {
+    func prepare(
+        sourceURL: URL, relayOrigin: URL, preferEarlyPlayback: Bool = false
+    ) async throws -> HLSRelaySessionDescriptor {
+        let id = UUID()
+        preparationID = id
         if let audioTranscoder {
             await audioTranscoder.stop()
         }
+        try Task.checkCancellation()
+        guard preparationID == id else { throw CancellationError() }
+        await core.invalidateAllSessions()
 
         do {
             return try await withThrowingTaskGroup(of: HLSRelaySessionDescriptor.self) { group in
                 group.addTask { [self] in
-                    try await prepareWithoutTimeout(sourceURL: sourceURL, relayOrigin: relayOrigin)
+                    try await prepareWithoutTimeout(
+                        sourceURL: sourceURL, relayOrigin: relayOrigin, preferEarlyPlayback: preferEarlyPlayback
+                    )
                 }
                 group.addTask { [preparationTimeout] in
                     try await Task.sleep(for: preparationTimeout)
@@ -332,19 +348,26 @@ actor HLSRelaySessionCoordinator {
                 return result
             }
         } catch {
+            // A cancelled channel must never tear down its replacement.
+            guard preparationID == id else { throw CancellationError() }
             if let audioTranscoder {
                 await audioTranscoder.stop()
             }
-            await core.invalidateAllSessions()
+            if preparationID == id { await core.invalidateAllSessions() }
             throw error
         }
     }
 
     func stop() async {
+        preparationID = UUID()
         if let audioTranscoder {
             await audioTranscoder.stop()
         }
         await core.invalidateAllSessions()
+    }
+
+    func waitForAirPlayReadiness() async throws {
+        try await audioTranscoder?.waitForAirPlayReadiness()
     }
 
     func beginRecording(
@@ -369,16 +392,21 @@ actor HLSRelaySessionCoordinator {
 
     private func prepareWithoutTimeout(
         sourceURL: URL,
-        relayOrigin: URL
+        relayOrigin: URL,
+        preferEarlyPlayback: Bool
     ) async throws -> HLSRelaySessionDescriptor {
         if Self.shouldStreamAsMPEGTS(sourceURL) {
             guard let audioTranscoder, let mpegTSStreamer else {
                 throw HLSRelayError.unsupportedContinuousTransportStream
             }
             let sourceSession = try await core.createTranscodingSession(relayOrigin: relayOrigin)
-            let transcode = try await audioTranscoder.startMPEGTS { consumer in
+            try Task.checkCancellation()
+            let feed: MPEGTSFeeding = { consumer in
                 try await mpegTSStreamer.stream(from: sourceURL, into: consumer)
             }
+            let transcode = try await preferEarlyPlayback
+                ? audioTranscoder.startMPEGTSForLocalPlayback(feeding: feed)
+                : audioTranscoder.startMPEGTS(feeding: feed)
             return try await publish(transcode, for: sourceSession)
         }
 
@@ -386,8 +414,11 @@ actor HLSRelaySessionCoordinator {
             sourceURL: sourceURL,
             relayOrigin: relayOrigin
         )
+        try Task.checkCancellation()
         guard let audioTranscoder else { return sourceSession }
-        let transcode = try await audioTranscoder.start(relayURL: sourceSession.playlistURL)
+        let transcode = try await preferEarlyPlayback
+            ? audioTranscoder.startForLocalPlayback(relayURL: sourceSession.playlistURL)
+            : audioTranscoder.start(relayURL: sourceSession.playlistURL)
         return try await publish(transcode, for: sourceSession)
     }
 
@@ -404,6 +435,7 @@ actor HLSRelaySessionCoordinator {
         _ transcode: FFmpegHLSAudioTranscodeSession,
         for sourceSession: HLSRelaySessionDescriptor
     ) async throws -> HLSRelaySessionDescriptor {
+        try Task.checkCancellation()
         let publicPlaylistURL = try await core.registerTranscodedOutputDirectory(
             transcode.playlistURL.deletingLastPathComponent(),
             for: sourceSession

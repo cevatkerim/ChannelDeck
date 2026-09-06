@@ -110,6 +110,15 @@ struct HLSRelaySessionDescriptor: Equatable, Sendable {
     let playlistURL: URL
 }
 
+enum PlaybackSourcePolicy {
+    /// Continuous TS (including opaque IPTV endpoints) is not a seekable media
+    /// file. Passing it to AVPlayer after a relay failure can yield CoreMedia
+    /// -12939 instead of recovering. Only known native containers may fall back.
+    static func permitsDirectPlayback(_ url: URL) -> Bool {
+        ["m3u8", "m3u", "mp4", "m4v", "mov"].contains(url.pathExtension.lowercased())
+    }
+}
+
 enum HLSRelayError: Error, Equatable, LocalizedError, Sendable {
     case invalidRelayOrigin
     case invalidSource

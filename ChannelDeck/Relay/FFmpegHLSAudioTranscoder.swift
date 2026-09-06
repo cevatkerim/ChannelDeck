@@ -286,6 +286,10 @@ protocol HLSAudioTranscoding: Sendable {
     func start(relayURL: URL) async throws -> FFmpegHLSAudioTranscodeSession
     func startMPEGTS(feeding feed: @escaping MPEGTSFeeding) async throws
         -> FFmpegHLSAudioTranscodeSession
+    func startForLocalPlayback(relayURL: URL) async throws -> FFmpegHLSAudioTranscodeSession
+    func startMPEGTSForLocalPlayback(feeding feed: @escaping MPEGTSFeeding) async throws
+        -> FFmpegHLSAudioTranscodeSession
+    func waitForAirPlayReadiness() async throws
     func beginRecording(
         id: UUID,
         packageDirectory: URL,
@@ -328,6 +332,17 @@ enum FFmpegLiveRecordingError: Error, Equatable, LocalizedError, Sendable {
 }
 
 extension HLSAudioTranscoding {
+    func startForLocalPlayback(relayURL: URL) async throws -> FFmpegHLSAudioTranscodeSession {
+        try await start(relayURL: relayURL)
+    }
+
+    func startMPEGTSForLocalPlayback(feeding feed: @escaping MPEGTSFeeding) async throws
+        -> FFmpegHLSAudioTranscodeSession {
+        try await startMPEGTS(feeding: feed)
+    }
+
+    func waitForAirPlayReadiness() async throws {}
+
     func beginRecording(
         id: UUID,
         packageDirectory: URL,
@@ -387,6 +402,7 @@ enum FFmpegHLSAudioTranscoderError: Error, Equatable, LocalizedError, Sendable {
     case processCouldNotStart
     case processFailed(FFmpegProcessFailureReason)
     case startupTimedOut
+    case localStartupTimedOut
 
     var errorDescription: String? {
         switch self {
@@ -402,6 +418,8 @@ enum FFmpegHLSAudioTranscoderError: Error, Equatable, LocalizedError, Sendable {
             reason.userMessage
         case .startupTimedOut:
             "Preparing the AirPlay-compatible stream took too long."
+        case .localStartupTimedOut:
+            "A playable live buffer could not be prepared in time. Try again or choose another channel."
         }
     }
 }
@@ -417,6 +435,11 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private enum VideoMode: Sendable, Equatable {
         case streamCopy
         case h264VideoToolbox
+    }
+
+    private enum StartupAudience: Sendable {
+        case local
+        case airPlay
     }
 
     private enum AudioMode: Sendable, Equatable {
@@ -656,6 +679,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private let frameRateInspector: any VideoFrameRateInspecting
     private let clock = ContinuousClock()
     private var active: ActiveTranscode?
+    private var activeVideoMode = VideoMode.streamCopy
+    private var activeAudioMode = AudioMode.source
     private var activeRecording: ActiveRecording?
     private var recordingMonitorTask: Task<Void, Never>?
 
@@ -692,8 +717,33 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         try await startWithAutomaticVideoCompatibility(input: .mpegTS(feed))
     }
 
+    func startForLocalPlayback(relayURL: URL) async throws -> FFmpegHLSAudioTranscodeSession {
+        guard Self.isOpaqueRelayURL(relayURL) else {
+            throw FFmpegHLSAudioTranscoderError.invalidRelayURL
+        }
+        return try await startWithAutomaticVideoCompatibility(input: .relay(relayURL), audience: .local)
+    }
+
+    func startMPEGTSForLocalPlayback(feeding feed: @escaping MPEGTSFeeding) async throws
+        -> FFmpegHLSAudioTranscodeSession {
+        try await startWithAutomaticVideoCompatibility(input: .mpegTS(feed), audience: .local)
+    }
+
+    /// Matures the SAME rendition. A timeout here must not delete a local
+    /// player's media, reset its timeline, or discard an active recording.
+    func waitForAirPlayReadiness() async throws {
+        guard let active else { throw CancellationError() }
+        _ = try await waitUntilReady(
+            id: active.id,
+            videoMode: activeVideoMode,
+            audioMode: activeAudioMode,
+            audience: .airPlay
+        )
+    }
+
     private func startWithAutomaticVideoCompatibility(
-        input: ProcessInput
+        input: ProcessInput,
+        audience: StartupAudience = .airPlay
     ) async throws -> FFmpegHLSAudioTranscodeSession {
         var videoMode = VideoMode.streamCopy
         var audioMode = AudioMode.source
@@ -703,7 +753,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                 return try await startAttempt(
                     input: input,
                     videoMode: videoMode,
-                    audioMode: audioMode
+                    audioMode: audioMode,
+                    audience: audience
                 )
             } catch TranscodeAttemptError.videoRequiresTranscode
                 where videoMode == .streamCopy {
@@ -725,8 +776,10 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private func startAttempt(
         input: ProcessInput,
         videoMode: VideoMode,
-        audioMode: AudioMode
+        audioMode: AudioMode,
+        audience: StartupAudience
     ) async throws -> FFmpegHLSAudioTranscodeSession {
+        try Task.checkCancellation()
         guard let executableURL = locator.executableURL() else {
             throw FFmpegHLSAudioTranscoderError.ffmpegNotFound
         }
@@ -819,6 +872,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         }
 
         let id = UUID()
+        activeVideoMode = videoMode
+        activeAudioMode = audioMode
         active = ActiveTranscode(
             id: id,
             ownedProcess: OwnedProcess(
@@ -839,7 +894,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                 try await waitUntilReady(
                     id: id,
                     videoMode: videoMode,
-                    audioMode: audioMode
+                    audioMode: audioMode,
+                    audience: audience
                 )
             } onCancel: {
                 Task { await self.cancel(id: id) }
@@ -1129,7 +1185,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
     private func waitUntilReady(
         id: UUID,
         videoMode: VideoMode,
-        audioMode: AudioMode
+        audioMode: AudioMode,
+        audience: StartupAudience
     ) async throws -> FFmpegHLSAudioTranscodeSession {
         let deadline = clock.now.advanced(by: startupTimeout)
         let streamCopyProbeDeadline = clock.now.advanced(by: streamCopyProbeTimeout)
@@ -1160,13 +1217,21 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                     Self.failureReason(for: diagnostics)
                 )
             }
+            // A copied feed can create a manifest yet still have source GOPs
+            // too long for our fixed receiver target duration. Previously we
+            // published it and served only 503s, or waited for six huge segments
+            // until the startup deadline. Detect this before local publication.
+            if videoMode == .streamCopy,
+               Self.hasOversizedSegments(at: active.mediaPlaylistURL) {
+                throw TranscodeAttemptError.videoRequiresTranscode
+            }
+            let minimumSegmentCount = audience == .local ? 1 : (videoMode == .h264VideoToolbox ? 3 : 6)
             if Self.manifestsAreReady(
                 masterPlaylistURL: active.generatedMasterPlaylistURL,
                 mediaPlaylistURL: active.mediaPlaylistURL,
                 within: active.ownedProcess.directory,
-                minimumSegmentCount: videoMode == .h264VideoToolbox ? 3 : 6
+                minimumSegmentCount: minimumSegmentCount
             ) {
-                let minimumSegmentCount = videoMode == .h264VideoToolbox ? 3 : 6
                 let published = await Self.publishReceiverMaster(
                     generatedMasterPlaylistURL: active.generatedMasterPlaylistURL,
                     receiverMasterPlaylistURL: active.receiverMasterPlaylistURL,
@@ -1199,7 +1264,9 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
                 throw FFmpegHLSAudioTranscoderError.processFailed(reason)
             }
         }
-        throw FFmpegHLSAudioTranscoderError.startupTimedOut
+        throw audience == .local
+            ? FFmpegHLSAudioTranscoderError.localStartupTimedOut
+            : FFmpegHLSAudioTranscoderError.startupTimedOut
     }
 
     /// Converts private FFmpeg output into a fixed diagnostic category. The raw
@@ -1548,7 +1615,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         within directory: URL,
         minimumSegmentCount: Int
     ) -> Bool {
-        precondition(minimumSegmentCount >= 3)
+        precondition(minimumSegmentCount >= 1)
         guard let master = readManifest(at: masterPlaylistURL),
               master.hasPrefix("#EXTM3U") else {
             return false
@@ -1565,7 +1632,8 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
               childReferences == ["media-0.m3u8"],
               mediaPlaylistURL.lastPathComponent == childReferences[0],
               let media = readManifest(at: mediaPlaylistURL),
-              media.hasPrefix("#EXTM3U") else {
+              media.hasPrefix("#EXTM3U"),
+              (try? HLSMediaPlaylistNormalizer().normalize(media)) != nil else {
             return false
         }
 
@@ -1699,7 +1767,7 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
         averageBitsPerSecond: Double,
         firstSegmentURL: URL
     )? {
-        precondition(minimumSegmentCount >= 3)
+        precondition(minimumSegmentCount >= 1)
         guard let media = readManifest(at: mediaPlaylistURL) else { return nil }
         let lines = media
             .split(whereSeparator: \.isNewline)
@@ -1818,5 +1886,15 @@ actor FFmpegHLSAudioTranscoder: HLSAudioTranscoding {
             return nil
         }
         return String(data: data, encoding: .utf8)
+    }
+
+    private static func hasOversizedSegments(at url: URL) -> Bool {
+        guard let media = readManifest(at: url) else { return false }
+        return media.split(whereSeparator: \.isNewline).contains { line in
+            guard line.hasPrefix("#EXTINF:"),
+                  let value = line.dropFirst(8).split(separator: ",").first,
+                  let duration = Double(value), duration.isFinite else { return false }
+            return duration.rounded() > 12
+        }
     }
 }

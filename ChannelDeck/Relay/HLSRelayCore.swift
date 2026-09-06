@@ -76,6 +76,9 @@ actor HLSRelayCore {
         let response = try await fetch(
             HLSRelayUpstreamRequest(url: sourceURL)
         )
+        // A provider may finish a cancelled preflight late. Never let that
+        // response invalidate the session for the newly selected channel.
+        try Task.checkCancellation()
         guard (200 ... 299).contains(response.statusCode) else {
             throw HLSRelayError.upstreamRejected(response.statusCode)
         }

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 
 enum AirPlayRelayPhase: Equatable, Sendable {
     case notConfigured
@@ -51,6 +52,9 @@ final class AirPlayRelayController {
     private(set) var certificateExpiration: Date?
     private(set) var playbackNotice: String?
     private(set) var playbackIsRelayed = false
+    private(set) var playbackAirPlayReady = false
+    @ObservationIgnored private var playbackGeneration = UUID()
+    private static let playbackLogger = Logger(subsystem: "com.kerimincedayi.ChannelDeck", category: "PlaybackPreparation")
 
     var hostname: String {
         let zone = zoneDomain
@@ -268,54 +272,90 @@ final class AirPlayRelayController {
 
     /// Returns the receiver-reachable URL when the relay is ready. Unsupported
     /// sources safely fall back to direct native playback on this Mac.
-    func playbackURL(for sourceURL: URL) async -> URL {
+    func playbackURL(for sourceURL: URL) async throws -> URL {
+        let generation = UUID()
+        playbackGeneration = generation
+        playbackAirPlayReady = false
+        playbackIsRelayed = false
+        Self.playbackLogger.notice("Starting channel preparation")
         if phase.isBusy {
             playbackNotice = "Starting secure AirPlay relay…"
             playbackIsRelayed = false
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(90))
             while phase.isBusy, clock.now < deadline {
-                do {
-                    try await Task.sleep(for: .milliseconds(100))
-                } catch {
-                    playbackNotice = nil
-                    playbackIsRelayed = false
-                    return sourceURL
-                }
+                try await Task.sleep(for: .milliseconds(100))
             }
         }
 
+        try Task.checkCancellation()
+        guard playbackGeneration == generation else { throw CancellationError() }
+
         guard phase == .ready, let relayServer else {
-            playbackNotice = phase.isBusy
-                ? "Secure relay startup took too long. Playing directly on this Mac."
-                : "Secure relay is not ready. Playing directly on this Mac."
+            playbackNotice = "The local stream relay is not ready."
             playbackIsRelayed = false
+            guard PlaybackSourcePolicy.permitsDirectPlayback(sourceURL) else {
+                throw HLSRelayError.unsupportedContinuousTransportStream
+            }
+            playbackNotice = "Relay unavailable. Trying native playback on this Mac."
             return sourceURL
         }
-        playbackNotice = "Preparing AirPlay-compatible stream…"
+        playbackNotice = "Opening the channel and building its live buffer…"
         playbackIsRelayed = true
         do {
-            let session = try await relayServer.relayURL(for: sourceURL)
+            let session = try await relayServer.relayURL(for: sourceURL, preferEarlyPlayback: true)
             try Task.checkCancellation()
-            playbackNotice = "Secure AirPlay relay active · H.264/AAC"
+            guard playbackGeneration == generation else { throw CancellationError() }
+            Self.playbackLogger.notice("Local stream ready; preparing AirPlay buffer in background")
+            playbackNotice = "Local stream ready · Preparing AirPlay in the background…"
             playbackIsRelayed = true
             return session.playlistURL
         } catch is CancellationError {
-            playbackNotice = nil
-            playbackIsRelayed = false
-            return sourceURL
-        } catch let error as FFmpegHLSAudioTranscoderError {
-            playbackNotice = "\(error.localizedDescription) Playing directly on this Mac."
-            playbackIsRelayed = false
-            return sourceURL
-        } catch let error as HLSRelayError {
-            playbackNotice = "\(error.localizedDescription) Playing directly on this Mac."
-            playbackIsRelayed = false
-            return sourceURL
+            throw CancellationError()
         } catch {
-            playbackNotice = "Secure relay unavailable for this channel. Playing directly on this Mac."
+            try Task.checkCancellation()
+            guard playbackGeneration == generation else { throw CancellationError() }
+            let message: String
+            if let failure = error as? FFmpegHLSAudioTranscoderError {
+                message = failure.localizedDescription
+            } else if let failure = error as? HLSRelayError {
+                message = failure.localizedDescription
+            } else {
+                message = "The local stream could not be prepared."
+            }
+            // Only fixed application error messages are logged, never provider
+            // URLs, FFmpeg stderr, or arbitrary error descriptions.
+            Self.playbackLogger.error("Channel preparation failed: \(message, privacy: .public)")
+            playbackNotice = message
             playbackIsRelayed = false
+            guard PlaybackSourcePolicy.permitsDirectPlayback(sourceURL) else {
+                if let failure = error as? FFmpegHLSAudioTranscoderError { throw failure }
+                if let failure = error as? HLSRelayError { throw failure }
+                throw HLSRelayError.upstreamFailure
+            }
+            playbackNotice = "\(message) Trying native playback on this Mac."
             return sourceURL
+        }
+    }
+
+    func prepareAirPlayForCurrentPlayback() async -> Bool {
+        let generation = playbackGeneration
+        guard playbackIsRelayed, let relayServer else { return false }
+        do {
+            try await relayServer.waitForAirPlayReadiness()
+            try Task.checkCancellation()
+            guard generation == playbackGeneration else { return false }
+            playbackAirPlayReady = true
+            playbackNotice = "Secure AirPlay relay ready · H.264/AAC"
+            Self.playbackLogger.notice("AirPlay buffer ready; local playback item unchanged")
+            return true
+        } catch {
+            guard !Task.isCancelled, generation == playbackGeneration else { return false }
+            // Keep the process, files and recording alive. Only external
+            // playback readiness failed; don't replace a working local item.
+            playbackNotice = "AirPlay is not ready. Local playback has been left running."
+            Self.playbackLogger.error("AirPlay readiness failed; retaining local playback session")
+            return false
         }
     }
 

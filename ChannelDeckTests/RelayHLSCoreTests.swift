@@ -464,6 +464,34 @@ final class RelayHLSCoreTests: XCTestCase {
         await coordinator.stop()
     }
 
+    func testEarlyLocalSessionSurvivesAirPlayReadinessFailure() async throws {
+        let core = makeCore(upstream: RelayUpstreamStub(responses: [:]))
+        let output = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: output) }
+        try Data("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=2500000\nmedia-0.m3u8\n".utf8)
+            .write(to: output.appendingPathComponent("index.m3u8"))
+        let transcoder = RelayAudioTranscoderStub(outputDirectory: output, failAirPlayReadiness: true)
+        let coordinator = HLSRelaySessionCoordinator(
+            core: core, audioTranscoder: transcoder,
+            mpegTSStreamer: RelayMPEGTSStreamerStub(payload: Data([0x47, 0x01, 0x02]))
+        )
+        let session = try await coordinator.prepare(
+            sourceURL: URL(string: "https://provider.invalid/channel.ts")!,
+            relayOrigin: relayOrigin, preferEarlyPlayback: true
+        )
+        let earlyStarts = await transcoder.earlyStarts
+        XCTAssertEqual(earlyStarts, 1)
+        let stopsBeforeReadiness = await transcoder.stopCount()
+        await XCTAssertThrowsErrorAsync(try await coordinator.waitForAirPlayReadiness()) { error in
+            XCTAssertEqual(error as? FFmpegHLSAudioTranscoderError, .startupTimedOut)
+        }
+        let response = try await core.handle(request(path: session.playlistURL.path))
+        XCTAssertEqual(response.statusCode, 200)
+        let stopsAfterReadiness = await transcoder.stopCount()
+        XCTAssertEqual(stopsAfterReadiness, stopsBeforeReadiness)
+        await coordinator.stop()
+    }
+
     func testCoordinatorStreamsExtensionlessIPTVEndpointAsRawTransport() async throws {
         let upstream = RelayUpstreamStub(responses: [:])
         let core = makeCore(upstream: upstream)
@@ -660,9 +688,12 @@ private actor RelayAudioTranscoderStub: HLSAudioTranscoding {
     private let consumer = RelayMPEGTSConsumerStub()
     private var relayURLs: [URL] = []
     private var stops = 0
+    private(set) var earlyStarts = 0
+    private let failAirPlayReadiness: Bool
 
-    init(outputDirectory: URL) {
+    init(outputDirectory: URL, failAirPlayReadiness: Bool = false) {
         self.outputDirectory = outputDirectory
+        self.failAirPlayReadiness = failAirPlayReadiness
     }
 
     func start(relayURL: URL) async throws -> FFmpegHLSAudioTranscodeSession {
@@ -678,6 +709,16 @@ private actor RelayAudioTranscoderStub: HLSAudioTranscoding {
 
     func stop() {
         stops += 1
+    }
+
+    func startMPEGTSForLocalPlayback(feeding feed: @escaping MPEGTSFeeding) async throws
+        -> FFmpegHLSAudioTranscodeSession {
+        earlyStarts += 1
+        return try await startMPEGTS(feeding: feed)
+    }
+
+    func waitForAirPlayReadiness() async throws {
+        if failAirPlayReadiness { throw FFmpegHLSAudioTranscoderError.startupTimedOut }
     }
 
     func rawInputBytes() async -> Data {

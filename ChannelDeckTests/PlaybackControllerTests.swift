@@ -208,6 +208,36 @@ final class PlaybackControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testAirPlayReadinessPreservesTheLocalItemAndPause() {
+        let controller = PlayerController()
+        controller.play(
+            url: URL(fileURLWithPath: "/private/tmp/local-channel.m3u8"),
+            channelName: "Local channel", allowsExternalPlayback: false, preferQuickStart: true
+        )
+        let originalItem = controller.player.currentItem
+        XCTAssertFalse(controller.player.allowsExternalPlayback)
+        XCTAssertTrue(controller.player.automaticallyWaitsToMinimizeStalling,
+                      "Quick startup must retain automatic recovery from later buffer underruns")
+        XCTAssertEqual(originalItem?.preferredForwardBufferDuration, 1)
+        controller.pause()
+        controller.setExternalPlaybackAllowed(true)
+        XCTAssertTrue(controller.player.currentItem === originalItem)
+        XCTAssertEqual(controller.player.rate, 0)
+        XCTAssertTrue(controller.player.allowsExternalPlayback)
+        XCTAssertTrue(controller.player.automaticallyWaitsToMinimizeStalling)
+        controller.stop()
+    }
+
+    func testRawTransportNeverFallsBackToAVPlayerFileLoading() {
+        for path in ["channel.ts", "channel.TS", "live/12345", "live/12345?output=ts", "movie.mkv"] {
+            XCTAssertFalse(PlaybackSourcePolicy.permitsDirectPlayback(URL(string: "http://provider.invalid/\(path)")!))
+        }
+        for path in ["index.m3u8", "INDEX.M3U8?output=ts", "recording.mp4"] {
+            XCTAssertTrue(PlaybackSourcePolicy.permitsDirectPlayback(URL(string: "https://provider.invalid/\(path)")!))
+        }
+    }
+
+    @MainActor
     func testPlayReplacesTheSinglePlayerItem() {
         let controller = PlayerController()
 

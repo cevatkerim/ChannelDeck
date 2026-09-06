@@ -15,6 +15,14 @@ struct PlayerDetailView: View {
                 if appModel.selectedChannel != nil || appModel.selectedRecording != nil {
                     AirPlayRoutePicker(player: appModel.playerController.player)
                         .frame(width: 30, height: 28)
+                        .disabled(appModel.playbackPreparation != nil
+                                  || appModel.selectedRecording != nil
+                                  || (appModel.airPlayRelayController.playbackIsRelayed
+                                      && !appModel.airPlayRelayController.playbackAirPlayReady))
+                        .help(appModel.airPlayRelayController.playbackIsRelayed
+                              && !appModel.airPlayRelayController.playbackAirPlayReady
+                              ? "AirPlay is preparing in the background. You can watch on this Mac."
+                              : "Choose an AirPlay device")
                 }
             }
             .padding(.horizontal, 28)
@@ -263,7 +271,7 @@ struct PlayerDetailView: View {
                         : appModel.airPlayRelayController.playbackIsRelayed ? "Preparing your stream…" : "Connecting to your channel…",
                     detail: preparation.kind == .recording ? "Getting your saved moment ready to play."
                         : appModel.airPlayRelayController.playbackIsRelayed || appModel.airPlayRelayController.phase.isBusy
-                        ? "Making this channel ready for playback and AirPlay."
+                        ? "Opening the live buffer. AirPlay will prepare in the background."
                         : "Getting everything ready for your front row seat."
                 )
             } else {

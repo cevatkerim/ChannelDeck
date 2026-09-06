@@ -3,6 +3,167 @@ import XCTest
 @testable import ChannelDeck
 
 final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
+    func testRealFFmpegStartsLocalPlaybackBeforeReceiverBufferWithoutSecondInput() async throws {
+        guard let ffmpeg = DefaultFFmpegExecutableLocator().executableURL() else {
+            throw XCTSkip("A local FFmpeg installation is required for the synthetic media integration test.")
+        }
+        let root = try makeTemporaryDirectory(named: "synthetic-live-source")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fixture = root.appendingPathComponent("fixture.ts")
+        let generator = Process()
+        generator.executableURL = ffmpeg
+        generator.arguments = [
+            "-hide_banner", "-loglevel", "error", "-nostdin",
+            "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25",
+            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000",
+            "-t", "32", "-c:v", "libx264", "-preset", "ultrafast",
+            "-g", "100", "-keyint_min", "100", "-sc_threshold", "0",
+            "-c:a", "aac", "-f", "mpegts", fixture.path,
+        ]
+        generator.standardInput = FileHandle.nullDevice
+        generator.standardOutput = FileHandle.nullDevice
+        generator.standardError = FileHandle.nullDevice
+        try generator.run()
+        defer { if generator.isRunning { generator.terminate() } }
+        let clock = ContinuousClock()
+        let generationDeadline = clock.now.advanced(by: .seconds(15))
+        while generator.isRunning, clock.now < generationDeadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard !generator.isRunning, generator.terminationStatus == 0 else {
+            XCTFail("Could not generate local synthetic video")
+            return
+        }
+        let input = SyntheticMPEGTSInput(bytes: try Data(contentsOf: fixture))
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: ffmpeg), temporaryRoot: root
+        )
+        let start = clock.now
+        do {
+            let local = try await transcoder.startMPEGTSForLocalPlayback { consumer in
+                try await input.feed(consumer)
+            }
+            let localElapsed = start.duration(to: clock.now)
+            let mediaURL = local.playlistURL.deletingLastPathComponent().appendingPathComponent("media-0.m3u8")
+            let earlyMedia = try String(contentsOf: mediaURL, encoding: .utf8)
+            XCTAssertLessThan(earlyMedia.components(separatedBy: "#EXTINF:").count - 1, 6)
+            XCTAssertNoThrow(try HLSMediaPlaylistNormalizer().normalize(earlyMedia))
+            try await transcoder.waitForAirPlayReadiness()
+            let readyMedia = try String(contentsOf: mediaURL, encoding: .utf8)
+            XCTAssertGreaterThanOrEqual(readyMedia.components(separatedBy: "#EXTINF:").count - 1, 6)
+            let feedCount = await input.feedCount
+            XCTAssertEqual(feedCount, 1)
+            print("Synthetic local playback ready after \(localElapsed); AirPlay after \(start.duration(to: clock.now))")
+            await transcoder.stop()
+        } catch {
+            await transcoder.stop()
+            throw error
+        }
+    }
+
+    func testLocalPlaybackPublishesOneSegmentThenMaturesSameRecordingSession() async throws {
+        let root = try makeTemporaryDirectory(named: "early-playback")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.oneSegmentFakeFFmpeg, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+        let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
+        let directory = session.playlistURL.deletingLastPathComponent()
+        let mediaURL = directory.appendingPathComponent("media-0.m3u8")
+        var media = try String(contentsOf: mediaURL, encoding: .utf8)
+        XCTAssertEqual(media.components(separatedBy: "#EXTINF:").count - 1, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: session.playlistURL.path))
+
+        let recordingID = UUID()
+        let package = root.appendingPathComponent("\(recordingID.uuidString.lowercased()).channeldeckrecording")
+        let captured = try await transcoder.beginRecording(id: recordingID, packageDirectory: package, quality: .compatible)
+        XCTAssertEqual(captured, 4)
+
+        let readiness = Task { try await transcoder.waitForAirPlayReadiness() }
+        for index in 1 ... 5 {
+            let name = String(format: "segment-0-%09d.ts", index)
+            try Data("transport-stream-\(index)".utf8).write(to: directory.appendingPathComponent(name))
+            media += "#EXT-X-PROGRAM-DATE-TIME:2026-09-04T00:00:20Z\n#EXTINF:4.0,\n\(name)\n"
+        }
+        try Data(media.utf8).write(to: mediaURL, options: .atomic)
+        try await readiness.value
+        XCTAssertTrue(FileManager.default.fileExists(atPath: session.playlistURL.path))
+        let recording = try await transcoder.finishRecording()
+        XCTAssertEqual(recording?.id, recordingID)
+        XCTAssertEqual(recording?.duration, 24)
+        XCTAssertEqual(recording?.segmentCount, 6)
+        await transcoder.stop()
+    }
+
+    func testAirPlayTimeoutDoesNotDeleteEarlyLocalPlaybackOrRecording() async throws {
+        let root = try makeTemporaryDirectory(named: "early-timeout")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.oneSegmentFakeFFmpeg, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable), startupTimeout: .milliseconds(600),
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+        let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
+        let id = UUID()
+        let package = root.appendingPathComponent("\(id.uuidString.lowercased()).channeldeckrecording")
+        _ = try await transcoder.beginRecording(id: id, packageDirectory: package, quality: .sourceVideo)
+        await XCTAssertThrowsTranscoderError(.startupTimedOut) {
+            try await transcoder.waitForAirPlayReadiness()
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: session.playlistURL.path))
+        let recording = try await transcoder.finishRecording()
+        XCTAssertEqual(recording?.id, id)
+        XCTAssertEqual(recording?.duration, 4)
+        await transcoder.stop()
+    }
+
+    func testCancellingBackgroundReadinessLeavesLocalFilesAlive() async throws {
+        let root = try makeTemporaryDirectory(named: "early-cancel")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        try writeExecutable(Self.oneSegmentFakeFFmpeg, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+        let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
+        let readiness = Task { try await transcoder.waitForAirPlayReadiness() }
+        readiness.cancel()
+        do {
+            try await readiness.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {} catch { XCTFail("Unexpected error: \(type(of: error))") }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: session.playlistURL.path))
+        await transcoder.stop()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: session.playlistURL.path))
+    }
+
+    func testOversizedCopiedSegmentRestartsBeforePublishingUnplayableLocalManifest() async throws {
+        let root = try makeTemporaryDirectory(named: "oversized-segment")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let executable = root.appendingPathComponent("ffmpeg")
+        let script = "#!/bin/sh\narguments=\" $* \"\ncase \"$arguments\" in\n*\" -c:v h264_videotoolbox \"*)\n"
+            + Self.successfulOutputScript + "\n;;\n*)\n"
+            + Self.successfulOutputScript.replacingOccurrences(of: "#EXTINF:4.0,", with: "#EXTINF:16.0,")
+            + "\n;;\nesac\n"
+        try writeExecutable(script, to: executable)
+        let transcoder = FFmpegHLSAudioTranscoder(
+            locator: FixedFFmpegLocator(url: executable), startupTimeout: .seconds(3),
+            temporaryRoot: root, frameRateInspector: FixedVideoFrameRateInspector(frameRate: 25)
+        )
+        let session = try await transcoder.startForLocalPlayback(relayURL: Self.relayURL)
+        let media = try String(contentsOf: session.playlistURL.deletingLastPathComponent().appendingPathComponent("media-0.m3u8"), encoding: .utf8)
+        XCTAssertFalse(media.contains("#EXTINF:16.0,"))
+        XCTAssertNoThrow(try HLSMediaPlaylistNormalizer().normalize(media))
+        await transcoder.stop()
+    }
+
+    private static let oneSegmentFakeFFmpeg = "#!/bin/sh\narguments=\" $* \"\nsegment_limit=1\n" + successfulOutputScript
+
     func testDefaultStartupTimeoutAllowsSixPacedSegmentsWithinCoordinatorDeadline() {
         XCTAssertEqual(FFmpegHLSAudioTranscoder.defaultStartupTimeout, .seconds(40))
         XCTAssertLessThan(FFmpegHLSAudioTranscoder.defaultStartupTimeout, .seconds(45))
@@ -794,6 +955,21 @@ final class RelayFFmpegHLSAudioTranscoderTests: XCTestCase {
     trap 'exit 0' TERM INT
     while :; do sleep 1; done
     """#
+}
+
+private actor SyntheticMPEGTSInput {
+    let bytes: Data
+    private(set) var feedCount = 0
+
+    init(bytes: Data) { self.bytes = bytes }
+
+    func feed(_ consumer: any MPEGTSByteConsuming) async throws {
+        feedCount += 1
+        for offset in stride(from: 0, to: bytes.count, by: 64 * 1_024) {
+            try Task.checkCancellation()
+            try await consumer.consume(bytes.subdata(in: offset ..< min(offset + 64 * 1_024, bytes.count)))
+        }
+    }
 }
 
 private struct FixedFFmpegLocator: FFmpegExecutableLocating {

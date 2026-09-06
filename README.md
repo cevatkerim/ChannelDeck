@@ -184,6 +184,8 @@ The API token and certificate key material stay in Keychain. DNS records carry a
 
 For compatible inputs, ChannelDeck copies H.264 video and converts the first audio track to 48 kHz stereo AAC. HEVC and other incompatible video codecs are converted with Apple's VideoToolbox H.264 encoder and capped at 1080p for the AirPlay rendition. Original-quality recording remains a separate choice.
 
+Local viewing starts as soon as the first validated HLS segment is available; it no longer waits for the larger AirPlay startup buffer. AirPlay prepares in the background and is enabled on the same player item when ready, preserving pause, rewind, and any active recording. Both stages use the same provider feed. Raw MPEG-TS channels still need this initial packaging (and codec conversion where required), so startup depends on the provider's data and keyframe delivery. If preparation fails, the app reports the error instead of trying to open a continuous TS response as a seekable file.
+
 Continuous MPEG-TS sources are streamed through a bounded pipe instead of exposing provider URLs to FFmpeg. The Mac must remain awake and on the same LAN as the AirPlay receiver. Some routers block public hostnames that resolve to private addresses; if DNS-rebinding protection intervenes, allow the generated relay hostname in the router configuration.
 
 ChannelDeck searches for FFmpeg in this order:

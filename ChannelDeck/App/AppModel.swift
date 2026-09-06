@@ -596,10 +596,27 @@ final class AppModel {
             defer { if playbackPreparation?.id == preparation.id { playbackPreparation = nil } }
             await finishActiveRecording()
             guard !Task.isCancelled, playbackPreparation?.id == preparation.id else { return }
-            let playbackURL = await airPlayRelayController.playbackURL(for: streamURL)
-            guard !Task.isCancelled, playbackPreparation?.id == preparation.id,
-                  selectedChannelID == channel.stableID else { return }
-            playerController.play(url: playbackURL, channelName: channel.name)
+            do {
+                let playbackURL = try await airPlayRelayController.playbackURL(for: streamURL)
+                guard !Task.isCancelled, playbackPreparation?.id == preparation.id,
+                      selectedChannelID == channel.stableID else { return }
+                playerController.play(
+                    url: playbackURL, channelName: channel.name,
+                    allowsExternalPlayback: !airPlayRelayController.playbackIsRelayed,
+                    preferQuickStart: airPlayRelayController.playbackIsRelayed
+                )
+                // Dismiss the blocking overlay now. Readiness continues on the
+                // same task (and is cancelled on stop/change), but never reloads
+                // this item or resets the live buffer/recording.
+                playbackPreparation = nil
+                guard airPlayRelayController.playbackIsRelayed else { return }
+                let airPlayReady = await airPlayRelayController.prepareAirPlayForCurrentPlayback()
+                guard !Task.isCancelled, selectedChannelID == channel.stableID else { return }
+                playerController.setExternalPlaybackAllowed(airPlayReady)
+            } catch {
+                guard !Task.isCancelled, playbackPreparation?.id == preparation.id else { return }
+                playbackIssue = PlaybackIssue(title: "This channel couldn't open", message: safeMessage(for: error))
+            }
         }
     }
 

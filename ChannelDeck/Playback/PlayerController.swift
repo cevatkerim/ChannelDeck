@@ -181,7 +181,7 @@ public final class PlayerController {
     public var airPlayWarningMessage: String? {
         guard !isExternalPlaybackActive else { return nil }
         if currentStreamUsesInsecureTransport {
-            return "This channel is delivered over HTTP. It can play on this Mac, but an AirPlay receiver may reject the handoff. Try Screen Mirroring or an HTTPS stream."
+            return "This channel is delivered over HTTP. An AirPlay receiver may reject a direct handoff. Try Screen Mirroring or an HTTPS stream."
         }
         if airPlayVideoCompatibility == .incompatible {
             return "This channel is not compatible with direct AirPlay Video. Try macOS Screen Mirroring instead."
@@ -197,6 +197,7 @@ public final class PlayerController {
     @ObservationIgnored private var airPlayCompatibilityTask: Task<Void, Never>?
     @ObservationIgnored private var timeObserver: Any?
     @ObservationIgnored private var userPaused = false
+    @ObservationIgnored private var quickStartPending = false
 
     public init(player: AVPlayer = AVPlayer()) {
         self.player = player
@@ -211,13 +212,15 @@ public final class PlayerController {
     public func play(
         url: URL,
         channelName: String,
-        allowsExternalPlayback: Bool = true
+        allowsExternalPlayback: Bool = true,
+        preferQuickStart: Bool = false
     ) {
         beginPlayback(
             PlaybackRequest(
                 url: url,
                 channelName: channelName,
-                allowsExternalPlayback: allowsExternalPlayback
+                allowsExternalPlayback: allowsExternalPlayback,
+                preferQuickStart: preferQuickStart
             )
         )
     }
@@ -227,6 +230,19 @@ public final class PlayerController {
         userPaused = true
         player.pause()
         refreshState()
+    }
+
+    /// Enable handoff after the relay's receiver buffer is ready, without
+    /// replacing the item or resetting a paused/rewound local timeline.
+    func setExternalPlaybackAllowed(_ allowed: Bool) {
+        guard var request = currentRequest else { return }
+        request.allowsExternalPlayback = allowed
+        currentRequest = request
+        player.allowsExternalPlayback = allowed
+        if allowed {
+            player.automaticallyWaitsToMinimizeStalling = true
+            player.currentItem?.preferredForwardBufferDuration = 0
+        }
     }
 
     public func resume() {
@@ -289,6 +305,7 @@ public final class PlayerController {
         player.pause()
         player.replaceCurrentItem(with: nil)
         player.allowsExternalPlayback = true
+        player.automaticallyWaitsToMinimizeStalling = true
         currentRequest = nil
         currentChannelName = nil
         isExternalPlaybackActive = false
@@ -315,6 +332,11 @@ public final class PlayerController {
         state = .preparing
 
         let item = AVPlayerItem(url: request.url)
+        item.preferredForwardBufferDuration = request.preferQuickStart ? 1 : 0
+        // Retain automatic recovery from later buffer underruns. Disabling
+        // this globally makes AVPlayer reset its rate to zero on a stall.
+        player.automaticallyWaitsToMinimizeStalling = true
+        quickStartPending = request.preferQuickStart
         observe(item: item, generation: generation)
         player.replaceCurrentItem(with: item)
         player.play()
@@ -464,6 +486,11 @@ public final class PlayerController {
                 return
             }
 
+            if quickStartPending, !item.isPlaybackBufferEmpty {
+                quickStartPending = false
+                player.playImmediately(atRate: 1)
+            }
+
             switch player.timeControlStatus {
             case .playing:
                 state = .playing
@@ -485,5 +512,6 @@ public final class PlayerController {
 private struct PlaybackRequest {
     let url: URL
     let channelName: String
-    let allowsExternalPlayback: Bool
+    var allowsExternalPlayback: Bool
+    let preferQuickStart: Bool
 }
