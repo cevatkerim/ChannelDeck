@@ -66,6 +66,8 @@ The integration discovers the provider's published catalogue, downloads only rel
 
 Matching happens locally. Open-EPG receives requests for public country files, not playlist URLs, credentials, or channel lists. It can see your IP address and which feeds you request. ChannelDeck is not affiliated with Open-EPG.
 
+Changing guide settings on an existing playlist does not re-download or re-import its channel library. The editor closes after saving; a progress indicator under the playlist heading reports country-feed loading, matching, and listing import. On a large international playlist, the initial download can take several minutes, and the guide may remain empty until that pass finishes.
+
 ### Watch live TV like live TV
 
 - Play through macOS-native AVKit and AVFoundation controls.

@@ -100,6 +100,14 @@ struct SourceEditorView: View {
             }
             .disabled(appModel.isSavingSource)
 
+            if appModel.isSavingSource {
+                ProgressView(appModel.sourceSaveStatus)
+                    .progressViewStyle(.linear)
+                    .font(.caption)
+            } else if let sourceID = appModel.editingGuideSourceID, let status = appModel.guideProgress[sourceID] {
+                ProgressView(status).progressViewStyle(.linear).font(.caption)
+            }
+
             if appModel.sourceDraftUsesUnencryptedTransport {
                 Label(
                     "This playlist uses HTTP. Its credentials and data can be visible on the network.",
@@ -139,7 +147,7 @@ struct SourceEditorView: View {
                         if appModel.isSavingSource { ProgressView().controlSize(.mini) }
                         Text(
                             appModel.isSavingSource
-                                ? "Connecting…" : (appModel.isEditingSource ? "Save changes" : "Add playlist"))
+                                ? "Saving…" : (appModel.isEditingSource ? "Save changes" : "Add playlist"))
                         if !appModel.isSavingSource { Image(systemName: "arrow.right") }
                     }
                 }

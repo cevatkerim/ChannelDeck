@@ -19,10 +19,12 @@ actor OpenEPGService {
             .appendingPathComponent("ChannelDeck/OpenEPG", isDirectory: true)
     }
 
-    func refresh(channels: [ParsedChannel], sourceID: UUID, preferences: GuidePreferences) async throws -> OpenEPGResult {
+    func refresh(channels: [ParsedChannel], sourceID: UUID, preferences: GuidePreferences,
+                 progress: @escaping @Sendable (String) async -> Void = { _ in }) async throws -> OpenEPGResult {
         let live = channels.filter(EPGMatcher.isLive)
         guard !live.isEmpty else { return OpenEPGResult(rows: [], candidates: [], programmes: [], warnings: []) }
         let countries = Set(live.compactMap { EPGMatcher.country(for: $0) })
+        await progress("Discovering country guides…")
         let catalogData = try await cached(URL(string: "https://www.open-epg.com/app/epgfetch.php")!)
         var seenFeeds: Set<URL> = []
         let catalog = try JSONDecoder().decode([OpenEPGFeed].self, from: catalogData)
@@ -34,7 +36,8 @@ actor OpenEPGService {
         }
         var candidates: [GuideChannel] = []
         var warnings: [String] = []
-        for feed in selected {
+        for (index, feed) in selected.enumerated() {
+            await progress("Loading \(feed.cou) · guide \(index + 1) of \(selected.count)…")
             try Task.checkCancellation()
             do {
                 let data = try await cached(feed.url)
@@ -48,6 +51,7 @@ actor OpenEPGService {
         let availableCountries = Set(selected.map(\.country))
         let missing = countries.subtracting(availableCountries).sorted()
         if !missing.isEmpty { warnings.append("No published feed for: " + missing.joined(separator: ", ").uppercased()) }
+        await progress("Matching \(live.count) live channels…")
         let allCandidates = candidates
         let rows = await Task.detached(priority: .utility) {
             let byCountry = Dictionary(grouping: allCandidates, by: { $0.feed.country })
@@ -62,6 +66,7 @@ actor OpenEPGService {
         var output: [ParsedProgramme] = []
         let byFeed = Dictionary(grouping: rows.filter { $0.match != nil }, by: { $0.match!.feed })
         for (feed, matchedRows) in byFeed {
+            await progress("Reading \(feed.cou) programme listings…")
             try Task.checkCancellation()
             do {
                 let data = try await cached(feed.url)

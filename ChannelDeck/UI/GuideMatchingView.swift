@@ -39,7 +39,9 @@ struct GuideMatchingView: View {
                     }
                 }
             } else { ContentUnavailableView("No matches yet", systemImage: "list.bullet.rectangle", description: Text("Save the playlist with Open-EPG enabled first.")) }
-            if appModel.refreshingGuides.contains(sourceID) { ProgressView("Updating guide…").controlSize(.small) }
+            if appModel.refreshingGuides.contains(sourceID) {
+                ProgressView(appModel.guideProgress[sourceID] ?? "Updating guide…").progressViewStyle(.linear)
+            }
         }
         .padding(24).frame(width: 680, height: 540)
         .disabled(appModel.refreshingGuides.contains(sourceID))

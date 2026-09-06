@@ -182,6 +182,15 @@ struct SidebarView: View {
                 Button("Remove…", systemImage: "trash", role: .destructive) { appModel.requestRemoval(of: source) }
             }
 
+            if let status = appModel.guideProgress[source.id] {
+                ProgressView(status)
+                    .progressViewStyle(.linear)
+                    .font(.system(size: 10))
+                    .foregroundStyle(ChannelDeckStyle.muted)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 6)
+                    .help(status)
+            }
             if expandedSourceIDs.contains(source.id) {
                 navigationRow("All channels", symbol: "rectangle.grid.1x2", selection: .source(source.id))
                 let allGroups = appModel.groups(for: source.id)

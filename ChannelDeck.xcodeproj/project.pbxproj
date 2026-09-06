@@ -47,6 +47,7 @@
 		80DD22B0C73BC37EA3B96DDB /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EAE12839EF568EB10080FCA /* NetworkAsyncHTTPClientHLSRelayUpstreamFetcherTests.swift */; };
 		80DDBCEC780EE7AF795D1629 /* SourceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D981749A51E11BF9372334CB /* SourceEditorView.swift */; };
 		80E50792B4111C204C90A39A /* ParserM3UParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26960B6BBA424F04C03BB05E /* ParserM3UParserTests.swift */; };
+		82406F9363E55D0CB124C36C /* SourceSettingsSaveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 744190BB883A22C8C2B0270F /* SourceSettingsSaveTests.swift */; };
 		865D5BA5A5372104181CEE09 /* Logging in Frameworks */ = {isa = PBXBuildFile; productRef = DE68B2D7BAEEA342EFD2BFA3 /* Logging */; };
 		877FCFC2DE38727FA03DCEF8 /* AsyncHTTPClient in Frameworks */ = {isa = PBXBuildFile; productRef = ECE7DAF6D4D0C4B5AF1F17DF /* AsyncHTTPClient */; };
 		89D041E3EA53225A002FD186 /* NetworkHTTPClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ADE2DC375FAC1F40F83C551 /* NetworkHTTPClientTests.swift */; };
@@ -142,6 +143,7 @@
 		6207941AF73A5656CA8D0E75 /* FFmpegHLSAudioTranscoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FFmpegHLSAudioTranscoder.swift; sourceTree = "<group>"; };
 		62FB166A87C914042C4CDF24 /* LibraryOrganizationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryOrganizationView.swift; sourceTree = "<group>"; };
 		650AF232FC124B13D8DF75C0 /* EncryptedPlaylistCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EncryptedPlaylistCache.swift; sourceTree = "<group>"; };
+		744190BB883A22C8C2B0270F /* SourceSettingsSaveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceSettingsSaveTests.swift; sourceTree = "<group>"; };
 		7756535DB4F6DC7FAA1950AE /* NetworkCloudflareDNSClientTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkCloudflareDNSClientTests.swift; sourceTree = "<group>"; };
 		7959B7ACB4E9C3E97442CEE1 /* GuideSearchIndex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuideSearchIndex.swift; sourceTree = "<group>"; };
 		79DADA90AB2ABD94A40D1AF0 /* OpenEPGService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenEPGService.swift; sourceTree = "<group>"; };
@@ -250,6 +252,7 @@
 				AD59F0D49A9B382AB203CBB1 /* RelayResponseDiagnosticsTests.swift */,
 				F5DA6941F17A216809E5AFEB /* SecurityEncryptedPlaylistCacheTests.swift */,
 				5A57CED1F1A1E57EB85D9F5D /* SecurityKeychainAbstractionTests.swift */,
+				744190BB883A22C8C2B0270F /* SourceSettingsSaveTests.swift */,
 			);
 			path = ChannelDeckTests;
 			sourceTree = "<group>";
@@ -597,6 +600,7 @@
 				60FB02E643596DA6D1D93450 /* RelayResponseDiagnosticsTests.swift in Sources */,
 				D3860487DA18B27BB0F259F2 /* SecurityEncryptedPlaylistCacheTests.swift in Sources */,
 				9111F2E3657EB77E93C2D38B /* SecurityKeychainAbstractionTests.swift in Sources */,
+				82406F9363E55D0CB124C36C /* SourceSettingsSaveTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
