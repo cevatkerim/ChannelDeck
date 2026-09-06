@@ -73,6 +73,8 @@ Changing guide settings on an existing playlist does not re-download or re-impor
 ### Watch live TV like live TV
 
 - Play through macOS-native AVKit and AVFoundation controls.
+- Start local playback before the larger AirPlay buffer is ready, with loading feedback until the first video frame appears.
+- Browse the TV guide while playback continues, then return without restarting or seeking the stream.
 - Use fullscreen, Picture in Picture, system media controls, and AirPlay.
 - Rewind within a five-minute rolling live window and jump back to the live edge.
 - Automatically prepare H.264/AAC compatibility media for HEVC, UHD, raw MPEG-TS, and video-only sources.
@@ -91,9 +93,9 @@ Changing guide settings on an existing playlist does not re-download or re-impor
 
 ## Install a test build
 
-Download the DMG and checksums from the [v0.2.0 testing release](https://github.com/cevatkerim/ChannelDeck/releases/tag/v0.2.0). This release includes the redesign, new identity, TV guide, and guide search improvements shown above. Release access follows the repository's visibility and permissions.
+Download the DMG and checksums from the [v0.2.1 testing release](https://github.com/cevatkerim/ChannelDeck/releases/tag/v0.2.1). This update adds opt-in Open-EPG integration, faster local playback while AirPlay prepares, fixes for black video at startup and guide navigation, and background catalogue restoration. See the [release notes](docs/releases/v0.2.1.md) for details and known limitations. Release access follows the repository's visibility and permissions.
 
-The DMG packaging workflow targets **Apple Silicon Macs running macOS 15 or newer**. It includes FFmpeg, so installing the packaged app does not require Xcode or Homebrew. This is an **unsigned, unnotarized testing build**; macOS will warn that Apple cannot verify its developer.
+The DMG packaging workflow targets **Apple Silicon Macs running macOS 15 or newer**. It includes FFmpeg, so installing the packaged app does not require Xcode or Homebrew. This is an **ad hoc-signed, unnotarized testing build**, without Developer ID signing; macOS will warn that Apple cannot verify its developer. The ad hoc signature supports integrity checks, not Apple-verified developer identity.
 
 Open the DMG, drag **ChannelDeck** into **Applications**, then open the installed app. If macOS blocks it and you trust the build, use **System Settings → Privacy & Security → Open Anyway** and confirm the prompt. See [Apple's instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac). A managed Mac may not permit this exception.
 
@@ -186,7 +188,9 @@ The API token and certificate key material stay in Keychain. DNS records carry a
 
 For compatible inputs, ChannelDeck copies H.264 video and converts the first audio track to 48 kHz stereo AAC. HEVC and other incompatible video codecs are converted with Apple's VideoToolbox H.264 encoder and capped at 1080p for the AirPlay rendition. Original-quality recording remains a separate choice.
 
-Local viewing starts as soon as the first validated HLS segment is available; it no longer waits for the larger AirPlay startup buffer. AirPlay prepares in the background and is enabled on the same player item when ready, preserving pause, rewind, and any active recording. Both stages use the same provider feed. Raw MPEG-TS channels still need this initial packaging (and codec conversion where required), so startup depends on the provider's data and keyframe delivery. If preparation fails, the app reports the error instead of trying to open a continuous TS response as a seekable file.
+Local viewing starts as soon as the first validated HLS segment is available; it no longer waits for the larger AirPlay startup buffer. AirPlay prepares in the background and is enabled on the same player item when ready, preserving pause, rewind, and any active recording. Both stages share the resulting provider connection; an incompatible stream may require an initial retry with conversion before local playback begins. Raw MPEG-TS channels still need this initial packaging (and codec conversion where required), so startup depends on the provider's data and keyframe delivery. If preparation fails, the app reports the error instead of trying to open a continuous TS response as a seekable file.
+
+Some H.264 feeds join mid-broadcast without a clean decoder starting point, even when the provider marks a picture as a keyframe. ChannelDeck checks the first video segment for the required parameter sets and an IDR picture before publishing it. If the copied video cannot start independently, the compatibility encoder produces a clean start. Loading feedback waits for an actual video frame rather than a running audio clock; a missing picture during advancing playback produces an actionable retry message. Original Video recording still preserves the source's compressed video.
 
 Continuous MPEG-TS sources are streamed through a bounded pipe instead of exposing provider URLs to FFmpeg. The Mac must remain awake and on the same LAN as the AirPlay receiver. Some routers block public hostnames that resolve to private addresses; if DNS-rebinding protection intervenes, allow the generated relay hostname in the router configuration.
 
@@ -230,7 +234,7 @@ xcodebuild -project ChannelDeck.xcodeproj -scheme ChannelDeck \
   CODE_SIGNING_ALLOWED=NO test
 ```
 
-The test suite covers playlist and guide parsing, large-library guide search, search cancellation, timeline bounds, library preferences, playback selection and recovery, network and redirect policy, encrypted persistence, recording storage, player state, relay routing, HLS rewriting, MPEG-TS streaming, Cloudflare DNS, ACME certificate setup, and FFmpeg compatibility behavior. Opt-in tests that require live services are skipped by default.
+The test suite covers playlist and guide parsing, large-library guide search, search cancellation, timeline bounds, library preferences, playback selection and recovery, network and redirect policy, encrypted persistence, recording storage, player state, relay routing, HLS rewriting, MPEG-TS streaming, Cloudflare DNS, ACME certificate setup, and FFmpeg compatibility behavior. Synthetic video tests verify the first displayed frame without seeking, open-GOP conversion, preserved original recording bytes, and uninterrupted playback behind the guide. These fixtures use a development FFmpeg with `libx264`; the separately bundled release helper remains LGPL-only. Opt-in tests that require live services are skipped by default.
 
 The app icon and interface symbol are original, reproducible artwork. See the [identity notes](docs/brand/README.md), or regenerate the assets with:
 

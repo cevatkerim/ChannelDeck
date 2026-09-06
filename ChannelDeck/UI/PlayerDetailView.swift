@@ -249,6 +249,7 @@ struct PlayerDetailView: View {
 
     private var playbackOverlayIsVisible: Bool {
         if appModel.playbackPreparation != nil || appModel.playbackIssue != nil { return true }
+        if appModel.playerController.isPreparingFirstVideoFrame { return true }
         switch appModel.playerController.state {
         case .idle, .preparing, .buffering, .failed: return true
         default: return false
@@ -258,7 +259,10 @@ struct PlayerDetailView: View {
     private var playbackSurface: some View {
         ZStack {
             RoundedRectangle(cornerRadius: ChannelDeckStyle.cornerRadius).fill(Color.black)
-            PlayerViewRepresentable(player: appModel.playerController.player)
+            PlayerViewRepresentable(
+                controller: appModel.playerController,
+                isVideoSurfaceVisible: appModel.sidebarSelection != .guide
+            )
                 .accessibilityHidden(playbackOverlayIsVisible)
                 .clipShape(RoundedRectangle(cornerRadius: ChannelDeckStyle.cornerRadius))
 
@@ -285,7 +289,9 @@ struct PlayerDetailView: View {
                 case .idle:
                     playbackMessage(title: "Ready when you are.", message: appModel.selectedRecording != nil ? "Your recording is waiting for you." : "Your channel is waiting for you.", action: "Play")
                 default:
-                    EmptyView()
+                    if appModel.playerController.isPreparingFirstVideoFrame {
+                        loadingMessage("Preparing the picture…", detail: "Waiting for the first video frame from the channel.")
+                    }
                 }
             }
         }
